@@ -3222,6 +3222,8 @@ mod tests {
         trace: Mutex<Vec<String>>,
         paths: Mutex<Vec<OwnedObjectPath>>,
         created: std::sync::atomic::AtomicBool,
+        create_replies: std::sync::atomic::AtomicUsize,
+        calls_reads: std::sync::atomic::AtomicUsize,
         format_seen: std::sync::atomic::AtomicBool,
         state: std::sync::atomic::AtomicI32,
         direction: std::sync::atomic::AtomicI32,
@@ -3256,6 +3258,7 @@ mod tests {
         }
         #[zbus(property)]
         fn calls(&self) -> Vec<OwnedObjectPath> {
+            self.0.calls_reads.fetch_add(1, Ordering::SeqCst);
             self.0.paths.lock().unwrap().clone()
         }
         async fn create_call(
@@ -3278,6 +3281,7 @@ mod tests {
             let path = OwnedObjectPath::try_from(TEST_OUTGOING_CALL).unwrap();
             self.0.paths.lock().unwrap().push(path.clone());
             wait_native_boundary(&self.0.create_gate).await?;
+            self.0.create_replies.fetch_add(1, Ordering::SeqCst);
             Ok(path)
         }
         fn delete_call(&self, path: OwnedObjectPath) -> zbus::fdo::Result<()> {
@@ -3450,6 +3454,9 @@ mod tests {
     }
     impl OutgoingFixture {
         fn new_qualified() -> Self {
+            Self::new_qualified_with_timeout(Duration::from_secs(3))
+        }
+        fn new_qualified_with_timeout(timeout: Duration) -> Self {
             let bus = PrivateBus::start();
             let owner = bus.connection();
             let effects = Arc::new(OutgoingEffects::default());
@@ -3486,7 +3493,15 @@ mod tests {
             backend.provider =
                 crate::gsm_provider::ProviderGate::test_fixture_with_audio_port("null");
             backend.pcm = PcmAdapter::with_engine(FakePcmEngine(effects.clone()));
-            backend.connection = Some(bus.connection());
+            // Test-only client bound; the retained collector uses this same
+            // connection. Production's timeout and configuration are untouched.
+            backend.connection = Some(
+                Builder::address(bus.address.as_str())
+                    .unwrap()
+                    .method_timeout(timeout)
+                    .build()
+                    .unwrap(),
+            );
             assert!(backend.refresh().unwrap().available);
             Self {
                 backend,
@@ -3984,6 +3999,222 @@ mod tests {
     }
 
     #[test]
+    fn gsm_outgoing_held_create_owner_replacement_and_real_collector_overflow_keep_old_data_lease()
+    {
+        use crate::protocol::WorkerEnvelope;
+        for overflow in [false, true] {
+            let fixture = OutgoingFixture::new_qualified();
+            let key = fixture.key();
+            let epoch = fixture.backend.selected_modem_epoch();
+            let old_native_owner = fixture.backend.reconciliation().unwrap().native_owner;
+            let gap = fixture
+                .backend
+                .signals
+                .as_ref()
+                .unwrap()
+                .evidence_gap
+                .clone();
+            let replacement_effects = Arc::new(OutgoingEffects::default());
+            let replacement = if overflow {
+                None
+            } else {
+                let connection = fixture._bus.connection();
+                connection
+                    .object_server()
+                    .at("/org/freedesktop/ModemManager1", zbus::fdo::ObjectManager)
+                    .unwrap();
+                connection
+                    .object_server()
+                    .at(
+                        "/org/freedesktop/ModemManager1",
+                        ReconnectManager { version: "1.24.0" },
+                    )
+                    .unwrap();
+                connection
+                    .object_server()
+                    .at(TEST_MODEM0, ReconnectModem)
+                    .unwrap();
+                connection
+                    .object_server()
+                    .at(TEST_MODEM0, OutgoingVoice(replacement_effects.clone()))
+                    .unwrap();
+                Some(connection)
+            };
+            let replacement_reads = replacement_effects.calls_reads.load(Ordering::SeqCst);
+            let (held, release) = fixture.hold_boundary(ControlBoundary::Create);
+            let OutgoingFixture {
+                backend,
+                owner,
+                effects,
+                _bus,
+            } = fixture;
+            let gsm = GsmWorker::with_modem_backend(backend);
+            let events = crate::worker::tests::assert_gsm_outgoing_uncertain_lease(
+                &gsm,
+                &key,
+                vec![],
+                WorkerEnvelope::command(
+                    "call.dial",
+                    Some("held-create-loss".into()),
+                    serde_json::json!({"key":key,"address":"+49123456789","admission_epoch":epoch}),
+                ),
+                &["held-create-loss"],
+                crate::worker::tests::GsmLeaseOutcome::Uncertain,
+                |_, _| {
+                    held.recv_timeout(Duration::from_secs(3)).unwrap();
+                    if let Some(replacement) = &replacement {
+                        replace_owner(replacement);
+                    } else {
+                        // The real retained collector, not an injected flag, loses
+                        // queued evidence while the actor is blocked in Create.
+                        for _ in 0..256 {
+                            owner
+                                .emit_signal(
+                                    None::<&str>,
+                                    TEST_MODEM0,
+                                    MODEM_INTERFACE,
+                                    "StateChanged",
+                                    &(8i32, 8i32, 0u32),
+                                )
+                                .unwrap();
+                        }
+                        let deadline = Instant::now() + Duration::from_secs(2);
+                        while !gap.load(Ordering::SeqCst) && Instant::now() < deadline {
+                            thread::sleep(Duration::from_millis(5));
+                        }
+                        assert!(
+                            gap.load(Ordering::SeqCst),
+                            "real collector did not overflow"
+                        );
+                    }
+                    release.send(()).unwrap();
+                },
+            );
+            assert_eq!(effects.create_replies.load(Ordering::SeqCst), 1);
+            assert_eq!(effects.starts.load(Ordering::SeqCst), 0);
+            assert!(effects.deletes.lock().unwrap().is_empty());
+            assert_eq!(effects.hangups.load(Ordering::SeqCst), 0);
+            assert!(!effects
+                .trace
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|e| matches!(e.as_str(), "prepare" | "pcm_start")));
+            assert!(events
+                .iter()
+                .filter(|e| e.message_type == "call.reconciled")
+                .all(|e| e.payload["native_owner"] == serde_json::json!(old_native_owner)));
+            assert!(replacement_effects.paths.lock().unwrap().is_empty());
+            assert_eq!(
+                replacement_effects.calls_reads.load(Ordering::SeqCst),
+                replacement_reads,
+                "new owner was queried as old cleanup proof"
+            );
+        }
+    }
+
+    #[test]
+    fn gsm_outgoing_bounded_create_timeout_and_late_native_reply_never_retry_borrow_or_release() {
+        use crate::protocol::WorkerEnvelope;
+        let fixture = OutgoingFixture::new_qualified_with_timeout(Duration::from_millis(250));
+        let key = fixture.key();
+        let epoch = fixture.backend.selected_modem_epoch();
+        let (held, release) = fixture.hold_boundary(ControlBoundary::Create);
+        let OutgoingFixture {
+            backend,
+            owner: _owner,
+            effects,
+            _bus,
+        } = fixture;
+        let gsm = GsmWorker::with_modem_backend(backend);
+        let events = crate::worker::tests::assert_gsm_outgoing_uncertain_lease(
+            &gsm,
+            &key,
+            vec![],
+            WorkerEnvelope::command(
+                "call.dial",
+                Some("create-timeout".into()),
+                serde_json::json!({"key":key,"address":"+49123456789","admission_epoch":epoch}),
+            ),
+            &["create-timeout", "forbidden-retry", "old-cleanup"],
+            crate::worker::tests::GsmLeaseOutcome::Uncertain,
+            |gsm, send| {
+                held.recv_timeout(Duration::from_secs(3)).unwrap();
+                let reads = effects.calls_reads.load(Ordering::SeqCst);
+                let deadline = Instant::now() + Duration::from_secs(2);
+                // The blocked native method cannot reply until release. A new
+                // backend OM/Calls read proves its bounded client call returned.
+                while effects.calls_reads.load(Ordering::SeqCst) == reads
+                    && Instant::now() < deadline
+                {
+                    thread::sleep(Duration::from_millis(5));
+                }
+                assert!(
+                    effects.calls_reads.load(Ordering::SeqCst) > reads,
+                    "Create client did not time out while native reply remained held"
+                );
+                assert_eq!(effects.create_replies.load(Ordering::SeqCst), 0);
+                gsm.send_at_epoch(
+                    GsmCommand::DialSession {
+                        request_id: "forbidden-retry".into(),
+                        key: SessionKey {
+                            call_id: "runtime-outgoing-2".into(),
+                            ..key.clone()
+                        },
+                        number: "+49123456789".into(),
+                    },
+                    epoch,
+                )
+                .unwrap();
+                send(&WorkerEnvelope::command(
+                    "call.action",
+                    Some("old-cleanup".into()),
+                    serde_json::json!({"key":key,"action":"hangup"}),
+                ))
+                .unwrap();
+                release.send(()).unwrap();
+                let deadline = Instant::now() + Duration::from_secs(2);
+                while effects.create_replies.load(Ordering::SeqCst) == 0
+                    && Instant::now() < deadline
+                {
+                    thread::sleep(Duration::from_millis(5));
+                }
+                assert_eq!(
+                    effects.create_replies.load(Ordering::SeqCst),
+                    1,
+                    "late native Create did not complete"
+                );
+            },
+        );
+        assert_eq!(effects.create_replies.load(Ordering::SeqCst), 1);
+        assert_eq!(
+            effects
+                .trace
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|e| e.as_str() == "create")
+                .count(),
+            1
+        );
+        assert_eq!(effects.starts.load(Ordering::SeqCst), 0);
+        assert_eq!(effects.hangups.load(Ordering::SeqCst), 0);
+        assert!(effects.deletes.lock().unwrap().is_empty());
+        assert!(events.iter().all(|e| e.message_type != "call.offer"
+            && (e.message_type != "call.update" || e.payload["key"] != serde_json::json!(key))));
+        for request in ["forbidden-retry", "old-cleanup"] {
+            assert_eq!(
+                events
+                    .iter()
+                    .find(|e| e.request_id.as_deref() == Some(request))
+                    .unwrap()
+                    .payload["ok"],
+                false
+            );
+        }
+    }
+
+    #[test]
     fn gsm_outgoing_pending_provider_and_preparation_failure_never_dispatch_native_start_or_accept()
     {
         use yoyopod_protocol::call::CallAction;
@@ -4037,6 +4268,7 @@ mod tests {
             .drain_call_events()
             .iter()
             .all(|e| !matches!(e,CallManagerWireEvent::Update(u) if u.phase==CallPhase::Active)));
+        // Expire only after the native Active/empty-port wait is underway.
         fixture.backend.audio_deadline = Some(Instant::now());
         fixture.backend.observe_path(TEST_OUTGOING_CALL).unwrap();
         assert!(fixture.backend.audio.is_none() && fixture.backend.prepared_audio.is_none());
@@ -4046,6 +4278,56 @@ mod tests {
         fixture.backend.observe_path(TEST_OUTGOING_CALL).unwrap();
         assert!(fixture.backend.drain_call_events().iter().any(|e| matches!(e,CallManagerWireEvent::Update(u) if u.key==key && u.phase==CallPhase::Ended)));
         assert!(!fixture.backend.owns_voice(&key));
+    }
+
+    #[test]
+    fn gsm_outgoing_long_remote_ringing_does_not_consume_native_active_port_wait() {
+        let mut fixture = OutgoingFixture::new_qualified();
+        let key = fixture.key();
+        fixture.dial(&key, "+49123456789").unwrap();
+        fixture.effects.empty_port.store(true, Ordering::SeqCst);
+        assert_eq!(fixture.effects.state.load(Ordering::SeqCst), 1);
+        // Real bounded elapsed ringing, with no capture/playback or hardware.
+        thread::sleep(Duration::from_secs(9));
+        fixture.backend.observe_path(TEST_OUTGOING_CALL).unwrap();
+        assert!(fixture.backend.audio.is_none() && fixture.backend.prepared_audio.is_some());
+        assert!(!fixture.trace().iter().any(|e| e == "pcm_start"));
+        fixture.backend.drain_call_events();
+        fixture.effects.state.store(4, Ordering::SeqCst);
+        fixture.backend.observe_path(TEST_OUTGOING_CALL).unwrap();
+        assert_eq!(
+            fixture.effects.hangups.load(Ordering::SeqCst),
+            0,
+            "remote ringing consumed the native Active port-readiness window"
+        );
+        assert!(fixture.backend.audio.is_none() && fixture.backend.prepared_audio.is_some());
+        assert_eq!(
+            fixture
+                .backend
+                .registry()
+                .unwrap()
+                .latest(&key)
+                .unwrap()
+                .phase,
+            CallPhase::Preparing
+        );
+        assert!(fixture
+            .backend
+            .drain_call_events()
+            .iter()
+            .all(|e| !matches!(e,CallManagerWireEvent::Update(u) if u.phase==CallPhase::Active)));
+        fixture.effects.empty_port.store(false, Ordering::SeqCst);
+        fixture.backend.observe_path(TEST_OUTGOING_CALL).unwrap();
+        assert!(fixture.backend.audio.is_some());
+        assert!(fixture.backend.drain_call_events().iter().any(|e| matches!(e,CallManagerWireEvent::Update(u) if u.key==key && u.phase==CallPhase::Active && u.duration_seconds==0)));
+        assert_eq!(
+            fixture
+                .trace()
+                .iter()
+                .filter(|e| e.as_str() == "pcm_start")
+                .count(),
+            1
+        );
     }
 
     #[test]
