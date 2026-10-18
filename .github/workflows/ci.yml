@@ -101,6 +101,7 @@ jobs:
   rust-device-arm64:
     if: ${{ !inputs.provider_inputs && !inputs.provider_tests && !inputs.provider_packages }}
     runs-on: ubuntu-24.04-arm
+    timeout-minutes: 180
     env:
       RUST_ARTIFACT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
       YOYOPOD_LVGL_SOURCE_DIR: ${{ github.workspace }}/.cache/lvgl/lvgl-9.5.0
@@ -108,6 +109,14 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+
+      - name: Verify exact artifact checkout before builds
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$RUST_ARTIFACT_SHA"
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
@@ -140,12 +149,136 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y pkg-config liblinphone-dev libudev-dev
 
+      # Reuse the package-evidence job's locked two-build and protected host
+      # collection flow. Rust sees only its quiescent, independently compared
+      # candidate, never a live container output mount.
+      - name: Create protected provider container ownership state
+        id: provider-container-state
+        run: |
+          set -euo pipefail
+          state=$(mktemp -d "$RUNNER_TEMP/mm-package-state.XXXXXX")
+          echo "directory=$state" >> "$GITHUB_OUTPUT"
+          bash deploy/providers/modemmanager/tests/test-container-state.sh | tee "$state/quiescence-tests.log"
+
+      - name: Exercise actual host provider collector
+        run: |
+          set -euo pipefail
+          evidence="$GITHUB_WORKSPACE/.artifacts/mm-packages/$RUST_ARTIFACT_SHA"
+          mkdir -p "$evidence/diagnostics"
+          python3 deploy/providers/modemmanager/tests/test-diagnostic-collector.py 2>&1 | tee "$evidence/diagnostics/collector-tests.log"
+
+      - name: Build provider twice in separate locked native ARM containers
+        id: provider-build
+        env:
+          CONTAINER_STATE: ${{ steps.provider-container-state.outputs.directory }}
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = aarch64
+          test "$(git rev-parse HEAD)" = "$RUST_ARTIFACT_SHA"
+          provider="$GITHUB_WORKSPACE/deploy/providers/modemmanager"
+          state="$CONTAINER_STATE"
+          source "$provider/build/container-state.sh"
+          trap 'container_quiesce_all "$state" > "$state/exit-cleanup.log" 2>&1 || true' EXIT
+          trap 'exit 130' INT
+          trap 'exit 143' TERM
+          evidence="$GITHUB_WORKSPACE/.artifacts/mm-packages/$RUST_ARTIFACT_SHA"
+          mkdir -p "$evidence/images" "$evidence/first" "$evidence/second" "$evidence/diagnostics"
+          image=$(jq -er .image "$provider/source-lock.json")
+          index=$(jq -er .toolchain.image_index_sha256 "$provider/source-lock.json")
+          child=$(jq -er .toolchain.image_manifest_sha256 "$provider/source-lock.json")
+          docker buildx imagetools inspect "docker.io/library/debian@sha256:$index" --raw > "$evidence/images/image-index.json"
+          docker buildx imagetools inspect "$image" --raw > "$evidence/images/image-manifest.json"
+          test "$(sha256sum "$evidence/images/image-index.json" | cut -d ' ' -f 1)" = "$index"
+          test "$(sha256sum "$evidence/images/image-manifest.json" | cut -d ' ' -f 1)" = "$child"
+          test "$image" = "docker.io/library/debian@sha256:$child"
+          test "$(jq -er '[.manifests[] | select(.platform.os=="linux" and .platform.architecture=="arm64")] | if length==1 then .[0].digest else error("ambiguous ARM64 child") end' "$evidence/images/image-index.json")" = "sha256:$child"
+          docker pull --platform linux/arm64 "$image"
+          failed=0
+          for build in first second; do
+            result=0
+            comparison_mount=()
+            if test "$build" = second; then
+              comparison_mount=(--mount "type=bind,source=$evidence/first,target=/first,readonly")
+            fi
+            container_begin "$state" "$build"
+            timeout --signal=TERM --kill-after=5s 60s docker create --cidfile "$state/$build.cid" --platform linux/arm64 \
+              --mount "type=bind,source=$provider,target=/provider,readonly" \
+              --mount "type=bind,source=$evidence/images,target=/images,readonly" \
+              --mount "type=bind,source=$evidence/$build,target=/evidence" \
+              --env "MM_IMAGE=$image" \
+              --env MM_IMAGE_INDEX=/images/image-index.json \
+              --env MM_IMAGE_MANIFEST=/images/image-manifest.json \
+              --env "PROVIDER_REPO_SHA=$RUST_ARTIFACT_SHA" \
+              --env "PROVIDER_CI_RUN_ID=$GITHUB_RUN_ID" \
+              --env "PROVIDER_BUILD=$build" \
+              "${comparison_mount[@]}" \
+              --workdir /provider "$image" bash -c '
+                set -euo pipefail
+                bash build/resolve-lock.sh /evidence/bootstrap/source-lock.json > /evidence/bootstrap.log 2>&1
+                test "$(jq -r .snapshot /evidence/bootstrap/source-lock.json)" = "$(jq -r .snapshot source-lock.json)"
+                bash build/build.sh --lock source-lock.json --repo-sha "$PROVIDER_REPO_SHA" --ci-run-id "$PROVIDER_CI_RUN_ID" --out /evidence/output
+                if test "$PROVIDER_BUILD" = second; then
+                  bash build/compare.sh /first/output /evidence/output > /evidence/comparison.log 2>&1
+                fi
+              ' > "$state/$build-create.log" 2>&1 || result=$?
+            if test "$result" = 0; then
+              container_start "$state" "$build" > "$evidence/$build/execution.log" 2>&1 || result=$?
+            fi
+            if ! container_quiesce_one "$state" "$build"; then
+              failed=1
+              break
+            fi
+            jq -n --arg sha "$RUST_ARTIFACT_SHA" --arg run "$GITHUB_RUN_ID" --arg build "$build" --argjson status "$result" \
+              '{schema_version:1,repo_sha:$sha,ci_run_id:$run,build:$build,exit_status:$status}' > "$evidence/diagnostics/$build.json"
+            test "$result" = 0 || failed=1
+          done
+          test "$failed" = 0
+
+      - name: Materialize provider in a fresh host-only tree
+        id: collect-provider
+        if: always()
+        env:
+          PACKAGE_BUILD_OUTCOME: ${{ steps.provider-build.outcome }}
+          CONTAINER_STATE: ${{ steps.provider-container-state.outputs.directory }}
+        run: |
+          set -euo pipefail
+          upload_parent=$(mktemp -d "$RUNNER_TEMP/mm-package-upload.XXXXXX")
+          upload_root="$upload_parent/upload"
+          echo "upload_root=$upload_root" >> "$GITHUB_OUTPUT"
+          mode=failure
+          if test "$PACKAGE_BUILD_OUTCOME" = success; then mode=success; fi
+          source deploy/providers/modemmanager/build/container-state.sh
+          container_collect_after_quiescence "$CONTAINER_STATE" \
+            "$GITHUB_WORKSPACE/.artifacts/mm-packages/$RUST_ARTIFACT_SHA" "$upload_root" "$mode"
+
+      - name: Upload failed provider build diagnostics only
+        if: ${{ always() && steps.collect-provider.outputs.upload_root != '' && (failure() || cancelled()) }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: yoyopod-modemmanager-package-diagnostics-${{ env.RUST_ARTIFACT_SHA }}
+          path: ${{ steps.collect-provider.outputs.upload_root }}/diagnostics/
+          if-no-files-found: error
+
+      - name: Validate current provider and bind both Cargo invocations
+        env:
+          PROVIDER_CANDIDATE: ${{ steps.collect-provider.outputs.upload_root }}/candidate
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$RUST_ARTIFACT_SHA"
+          bash deploy/providers/modemmanager/build/validate-manifest.sh "$PROVIDER_CANDIDATE"
+          test "$(jq -er .repo_sha "$PROVIDER_CANDIDATE/manifest.json")" = "$RUST_ARTIFACT_SHA"
+          test "$(jq -er .ci_run_id "$PROVIDER_CANDIDATE/manifest.json")" = "$GITHUB_RUN_ID"
+          bash deploy/providers/modemmanager/tests/test-bundle.sh "$PROVIDER_CANDIDATE"
+          printf 'YOYOPOD_MM_BUILD_MANIFEST=%s\n' "$(jq -c . "$PROVIDER_CANDIDATE/manifest.json")" >> "$GITHUB_ENV"
+
       - name: Check Rust workspace
         working-directory: device
         run: cargo check --workspace --locked --features whisplay-hardware,native-lvgl
 
       - name: Build Rust device ARM64 bundle
         working-directory: device
+        env:
+          PROVIDER_CANDIDATE: ${{ steps.collect-provider.outputs.upload_root }}/candidate
         run: |
           set -euo pipefail
           cargo build --release --locked \
@@ -182,7 +315,10 @@ jobs:
           cp target/release/yoyopod-on-pi "${bundle_root}/device/onpi/build/yoyopod-on-pi"
           cp target/release/yoyopod-power-host "${bundle_root}/device/power/build/yoyopod-power-host"
           cp target/release/yoyopod-speech-host "${bundle_root}/device/speech/build/yoyopod-speech-host"
-          tar -C "${bundle_root}" -czf "target/${bundle_name}.tar.gz" device
+          bash ../deploy/providers/modemmanager/build/bundle.sh \
+            --repo-sha "$RUST_ARTIFACT_SHA" --ci-run-id "$GITHUB_RUN_ID" \
+            --provider "$PROVIDER_CANDIDATE" --rust-root "$bundle_root" \
+            --out "target/${bundle_name}.tar.gz"
 
       - name: Upload Rust device ARM64 bundle
         uses: actions/upload-artifact@v4
