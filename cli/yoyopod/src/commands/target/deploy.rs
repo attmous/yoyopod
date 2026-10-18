@@ -593,6 +593,38 @@ struct GhRun {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cli::{Cli, Command as CliCommand, TargetCommand};
+    use clap::Parser;
+
+    #[test]
+    fn provider_parser_accepts_only_explicit_modemmanager_maintenance() {
+        let ordinary = Cli::try_parse_from(["yoyopod", "target", "deploy"])
+            .expect("ordinary deployment remains accepted");
+        let CliCommand::Target(target) = ordinary.command;
+        assert!(matches!(target.command, TargetCommand::Deploy(_)));
+        assert!(Cli::try_parse_from([
+            "yoyopod",
+            "target",
+            "deploy",
+            "--install-provider",
+            "stock",
+        ])
+        .is_err());
+        assert!(
+            Cli::try_parse_from(["yoyopod", "target", "deploy", "--install-provider",]).is_err()
+        );
+
+        let explicit = Cli::try_parse_from([
+            "yoyopod",
+            "target",
+            "deploy",
+            "--install-provider",
+            "modemmanager",
+        ])
+        .expect("explicit modemmanager maintenance must be accepted");
+        let CliCommand::Target(target) = explicit.command;
+        assert!(matches!(target.command, TargetCommand::Deploy(_)));
+    }
 
     #[test]
     fn pi_sync_includes_branch() {
@@ -650,7 +682,7 @@ mod tests {
     }
 
     #[test]
-    fn sim7600_rule_reserves_serial_ports_without_excluding_the_qmi_modem() {
+    fn provider_ordinary_prerequisites_are_read_only_and_preserve_qmi_rule() {
         let rule = include_str!("../../../../../deploy/udev/77-yoyopod-sim7600.rules");
         assert!(!rule.contains("ID_MM_DEVICE_IGNORE}=\"1\""));
         assert!(rule.contains("ID_MM_DEVICE_IGNORE}=\"0\""));
@@ -660,8 +692,23 @@ mod tests {
         assert!(rule.contains("ID_MM_CANDIDATE}=\"1\""));
         let command = modem_manager_prerequisites_command();
         assert!(command.contains("/etc/udev/rules.d/77-yoyopod-sim7600.rules"));
-        assert!(command.contains("udevadm settle"));
-        assert!(command.contains("systemctl restart ModemManager.service"));
+        assert!(command.contains("command -v mmcli"));
+        assert!(command.contains("cmp -s"));
+        assert!(command.contains("systemctl is-active --quiet ModemManager.service"));
+        for mutation in [
+            "apt-get",
+            "dpkg -i",
+            "sudo -n install",
+            "udevadm",
+            "systemctl enable",
+            "systemctl restart",
+            "tee ",
+        ] {
+            assert!(
+                !command.contains(mutation),
+                "ordinary deployment mutates provider with {mutation}: {command}"
+            );
+        }
     }
 
     #[test]
