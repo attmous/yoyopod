@@ -700,6 +700,10 @@ fn scp(ctx: &TargetContext, source: &Path, destination: &str, recursive: bool) -
     Ok(())
 }
 
+fn remote_posix_absolute(path: &str) -> bool {
+    path.starts_with('/')
+}
+
 /// Upload checked inputs only. The locked transaction captures/simulates the
 /// complete prior closure before any service or checkout mutation.
 pub(super) fn stage_provider(
@@ -707,7 +711,7 @@ pub(super) fn stage_provider(
     bundle: &VerifiedBundle,
 ) -> Result<StagedProvider> {
     ensure!(
-        !ctx.dry_run && Path::new(&ctx.conn.project_dir).is_absolute(),
+        !ctx.dry_run && remote_posix_absolute(&ctx.conn.project_dir),
         "invalid provider stage target"
     );
     let output = run_remote_capture(
@@ -992,6 +996,24 @@ mod tests {
         archive.into_inner().unwrap().finish().unwrap();
     }
 
+    #[test]
+    fn provider_remote_posix_target_accepts_canonical_defaults_on_every_host() {
+        assert!(remote_posix_absolute(&PiPaths::default().project_dir));
+        assert!(remote_posix_absolute(&LanePaths::default().dev_checkout));
+        for path in [
+            "",
+            "opt/yoyopod-dev/checkout",
+            "./checkout",
+            "C:/checkout",
+            r"C:\checkout",
+            r"\opt\checkout",
+        ] {
+            assert!(
+                !remote_posix_absolute(path),
+                "accepted non-POSIX target {path:?}"
+            );
+        }
+    }
     #[test]
     fn provider_archive_accepts_pending_and_both_raw_ustar_controls() {
         let directory = tempfile::tempdir().unwrap();
