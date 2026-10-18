@@ -2151,6 +2151,9 @@ impl ModemManagerVoice {
     fn start_owned_audio(&mut self, key: &SessionKey, path: &str) -> Result<()> {
         self.cancellations.check(key, self.selected_epoch)?;
         self.ensure_prepared_current(key, path)?;
+        // Remote ringing does not consume the native Active port-readiness wait.
+        self.audio_deadline
+            .get_or_insert_with(|| Instant::now() + Duration::from_secs(8));
         let audio_port: String = self.proxy_for(path)?.get_property("AudioPort")?;
         self.ensure_control()?;
         if let Some(audio) = self.audio.as_mut() {
@@ -2431,7 +2434,6 @@ impl GsmBackend for ModemManagerVoice {
             self.format_admission = Some((key.clone(), epoch, format.sample_rate_hz()));
             self.ensure_created_current(key, path.as_str(), epoch)?;
             self.prepared_audio = Some(self.pcm.prepare(&format)?);
-            self.audio_deadline = Some(Instant::now() + Duration::from_secs(8));
             self.ensure_created_current(key, path.as_str(), epoch)?;
             self.ensure_prepared_current(key, path.as_str())?;
             self.ensure_created_current(key, path.as_str(), epoch)?;
@@ -2537,7 +2539,6 @@ impl GsmBackend for ModemManagerVoice {
                             return Err(error);
                         }
                     }
-                    self.audio_deadline = Some(Instant::now() + Duration::from_secs(8));
                     diagnostic.observe("accept_control", self.ensure_control())?;
                     diagnostic.observe(
                         "accept_format",
