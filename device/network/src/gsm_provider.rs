@@ -958,10 +958,16 @@ impl ProviderIdentity {
 #[cfg(test)]
 impl ProviderGate {
     pub(crate) fn test_fixture() -> Self {
-        struct SyntheticReader(ProviderManifest);
+        Self::test_fixture_with_audio_port("ttyUSB9")
+    }
+
+    pub(crate) fn test_fixture_with_audio_port(audio_port: &str) -> Self {
+        struct SyntheticReader(ProviderManifest, String);
         impl ProviderIdentityReader for SyntheticReader {
             fn read(&self, _: &Connection, _: &str, _: &str) -> Result<ProviderIdentity> {
-                Ok(ProviderIdentity::test_fixture(&self.0))
+                let mut identity = ProviderIdentity::test_fixture(&self.0);
+                identity.ports[1].0.clone_from(&self.1);
+                Ok(identity)
             }
         }
         let profile = ProviderProfile::test_fixture(Qualification::Qualified);
@@ -975,7 +981,7 @@ impl ProviderGate {
             }));
         Self {
             profile,
-            reader: Box::new(SyntheticReader(expected.clone())),
+            reader: Box::new(SyntheticReader(expected.clone(), audio_port.into())),
             expected: Some(expected),
         }
     }

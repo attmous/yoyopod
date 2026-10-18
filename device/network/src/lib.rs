@@ -7,6 +7,7 @@ pub mod gsm;
 mod gsm_audio;
 pub mod gsm_audio_helper;
 pub mod gsm_calls;
+mod gsm_pcm;
 pub mod gsm_provider;
 pub mod modem;
 pub mod ppp;

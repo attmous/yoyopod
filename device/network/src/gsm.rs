@@ -15,7 +15,10 @@ use zbus::blocking::{connection::Builder, Connection, Proxy};
 use zbus::fdo::ManagedObjects;
 use zvariant::OwnedObjectPath;
 
+#[cfg(test)]
 use crate::gsm_audio::UsbPcmAudio;
+use crate::gsm_pcm::{ActivePcm, PcmAdapter, PreparedPcm};
+use crate::gsm_provider::VerifiedPcm;
 
 const DESTINATION: &str = "org.freedesktop.ModemManager1";
 const MODEM_INTERFACE: &str = "org.freedesktop.ModemManager1.Modem";
@@ -677,6 +680,13 @@ impl Drop for ModemSignals {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum OutgoingStage {
+    Creating,
+    CreatedUnstarted { path: String },
+    StartDispatched { path: String },
+}
+
 #[derive(Default)]
 struct ModemManagerVoice {
     selected_epoch: u64,
@@ -704,17 +714,22 @@ struct ModemManagerVoice {
     isolated: bool,
     pending_events: Vec<CallManagerWireEvent>,
     owner: Option<SessionKey>,
-    prepared_audio: Option<crate::gsm_audio::PreparedUsbPcm>,
-    audio: Option<UsbPcmAudio>,
+    pcm: PcmAdapter,
+    prepared_audio: Option<Box<dyn PreparedPcm>>,
+    audio: Option<Box<dyn ActivePcm>>,
     audio_deadline: Option<Instant>,
     active_since: Option<Instant>,
     cleanup: CleanupEvidence,
     cached: GsmCallState,
     next_discovery: Option<Instant>,
     next_recovery: Option<Instant>,
-    // CreateCall timeout may create an object later. Retain the data lease and
-    // associate the next previously unknown outgoing object only for cleanup.
+    // CreateCall timeout may create an object later. Retain the data lease;
+    // discovery cannot supply the exact returned identity of a lost reply.
     uncertain_create: Option<SessionKey>,
+    outgoing_stage: Option<(SessionKey, OutgoingStage)>,
+    // Removal followed by reuse cannot lend the new object's identity to an
+    // old key. Only trusted absence (never-started) or recovery can clear it.
+    outgoing_path_lost: bool,
 }
 
 impl ModemManagerVoice {
@@ -1011,6 +1026,20 @@ impl ModemManagerVoice {
             self.membership_reconcile_pending = true;
             if header.member().map(|s| s.as_str()) == Some("CallAdded") {
                 self.idle_calls_proven = false;
+            } else if let Ok((path,)) = message.body().deserialize::<(OwnedObjectPath,)>() {
+                // A reused native path cannot continue a prepared admission.
+                if self
+                    .owner
+                    .as_ref()
+                    .and_then(|key| self.registry.as_ref()?.path_for(key))
+                    == Some(path.as_str())
+                    && self.outgoing_stage.is_some()
+                    && !(self.terminating.contains(path.as_str())
+                        && self.cleanup.terminal_is_trusted(path.as_str()))
+                {
+                    self.outgoing_path_lost = true;
+                    self.invalidate_provider_audio();
+                }
             }
         }
         if header.sender().map(|s| s.as_str()) != self.service_owner.as_deref()
@@ -1023,6 +1052,19 @@ impl ModemManagerVoice {
             .body()
             .deserialize::<(OwnedObjectPath, Vec<String>)>()
         {
+            if interfaces.iter().any(|i| i == CALL_INTERFACE)
+                && self
+                    .owner
+                    .as_ref()
+                    .and_then(|key| self.registry.as_ref()?.path_for(key))
+                    == Some(path.as_str())
+                && self.outgoing_stage.is_some()
+                && !(self.terminating.contains(path.as_str())
+                    && self.cleanup.terminal_is_trusted(path.as_str()))
+            {
+                self.outgoing_path_lost = true;
+                self.invalidate_provider_audio();
+            }
             if self.modem.as_ref() == Some(&path)
                 && interfaces
                     .iter()
@@ -1384,6 +1426,23 @@ impl ModemManagerVoice {
     }
 
     fn object_deleted(&mut self, path: &str, key: &SessionKey) {
+        if self
+            .outgoing_stage
+            .as_ref()
+            .is_some_and(|(candidate, stage)| {
+                candidate == key && matches!(stage, OutgoingStage::StartDispatched { .. })
+            })
+            && !(self.terminating.contains(path)
+                && self.cleanup.terminal_is_trusted(path)
+                && !self.outgoing_path_lost)
+        {
+            // Absence/CallDeleted can race a dispatched Start. It cannot prove
+            // that its native operation ended; retain this exact key and lease.
+            self.cleanup.failed(path);
+            self.audio.take();
+            self.prepared_audio.take();
+            return;
+        }
         self.terminating.remove(path);
         if let Some(old) = self.registry.as_ref().and_then(|r| r.latest(key)).cloned() {
             self.cleanup.confirmed(path);
@@ -1412,6 +1471,17 @@ impl ModemManagerVoice {
             self.audio_deadline = None;
             self.active_since = None;
             self.owner = None;
+            if self
+                .outgoing_stage
+                .as_ref()
+                .is_some_and(|(candidate, _)| candidate == key)
+            {
+                self.outgoing_stage = None;
+                self.outgoing_path_lost = false;
+            }
+            if self.uncertain_create.as_ref() == Some(key) {
+                self.uncertain_create = None;
+            }
             self.cached.state = "idle".into();
             self.cached.peer_number.clear();
             self.cached.duration_seconds = 0;
@@ -1515,7 +1585,31 @@ impl ModemManagerVoice {
     fn targeted_hangup(&mut self, key: &SessionKey) -> Result<()> {
         self.ensure_control()?;
         let path = self.path_for(key)?;
+        let owner = self.owner.clone();
+        let stage = self.outgoing_stage.clone();
+        anyhow::ensure!(
+            !self.outgoing_path_lost
+                || self
+                    .outgoing_stage
+                    .as_ref()
+                    .is_none_or(|(candidate, _)| candidate != key),
+            "GSM native call identity was lost"
+        );
+        let state: i32 = self.proxy_for(&path)?.get_property("State")?;
+        self.ensure_control()?;
+        self.ensure_cleanup_identity(key, &path, owner.as_ref(), stage.as_ref())?;
+        if state == 0
+            && self.outgoing_stage.as_ref()
+                == Some(&(
+                    key.clone(),
+                    OutgoingStage::CreatedUnstarted { path: path.clone() },
+                ))
+        {
+            return self.delete_created_unstarted(key);
+        }
+        anyhow::ensure!(state != 0, "Cannot Hangup an UNKNOWN GSM call");
         self.terminating.insert(path.clone());
+        self.cleanup.failed(&path);
         if self.owner.as_ref() == Some(key) {
             self.audio.take();
             self.prepared_audio.take();
@@ -1523,6 +1617,8 @@ impl ModemManagerVoice {
             self.owned_audio_port = None;
             self.audio_deadline = None;
         }
+        self.ensure_control()?;
+        self.ensure_cleanup_identity(key, &path, owner.as_ref(), stage.as_ref())?;
         let result = self.proxy_for(&path)?.call::<_, _, ()>("Hangup", &());
         self.ensure_control()?;
         match result {
@@ -1535,6 +1631,71 @@ impl ModemManagerVoice {
                 Err(error.into())
             }
         }
+    }
+
+    fn ensure_cleanup_identity(
+        &self,
+        key: &SessionKey,
+        path: &str,
+        owner: Option<&SessionKey>,
+        stage: Option<&(SessionKey, OutgoingStage)>,
+    ) -> Result<()> {
+        anyhow::ensure!(
+            self.registry()?.path_for(key) == Some(path)
+                && self.owner.as_ref() == owner
+                && self.outgoing_stage.as_ref() == stage
+                && (!self.outgoing_path_lost
+                    || stage.is_none_or(|(candidate, _)| candidate != key)),
+            "GSM cleanup native identity changed"
+        );
+        Ok(())
+    }
+
+    fn delete_created_unstarted(&mut self, key: &SessionKey) -> Result<()> {
+        self.ensure_control()?;
+        let path = self.path_for(key)?;
+        let owner = self.owner.clone();
+        let stage = self.outgoing_stage.clone();
+        anyhow::ensure!(
+            self.owner.as_ref() == Some(key)
+                && !self.outgoing_path_lost
+                && self.outgoing_stage.as_ref()
+                    == Some(&(
+                        key.clone(),
+                        OutgoingStage::CreatedUnstarted { path: path.clone() }
+                    )),
+            "GSM call is not an exact never-started creation"
+        );
+        let state: i32 = self.proxy_for(&path)?.get_property("State")?;
+        self.ensure_control()?;
+        self.ensure_cleanup_identity(key, &path, owner.as_ref(), stage.as_ref())?;
+        anyhow::ensure!(
+            state == 0,
+            "Only a never-started UNKNOWN call may be deleted"
+        );
+        self.terminating.insert(path.clone());
+        self.cleanup.failed(&path);
+        // Drop joins before any following reconciliation can publish Ended.
+        self.audio.take();
+        self.prepared_audio.take();
+        self.format_admission = None;
+        self.owned_audio_port = None;
+        self.audio_deadline = None;
+        self.ensure_control()?;
+        self.ensure_cleanup_identity(key, &path, owner.as_ref(), stage.as_ref())?;
+        let object = OwnedObjectPath::try_from(path)?;
+        let result = Proxy::new(
+            self.connection.as_ref().context("No modem connection")?,
+            self.bound_owner()?,
+            self.modem.as_ref().context("No modem")?.as_str(),
+            VOICE_INTERFACE,
+        )?
+        .call::<_, _, ()>("DeleteCall", &(object,));
+        self.ensure_control()?;
+        result?;
+        // Even a successful Delete reply is bookkeeping, not native absence.
+        // Keep cleanup uncertainty until a fresh same-owner Calls snapshot.
+        self.reconcile_paths()
     }
 
     fn observe_path(&mut self, path: &str) -> Result<()> {
@@ -1568,18 +1729,13 @@ impl ModemManagerVoice {
         if phase == CallPhase::Ended && !self.cleanup.terminal_is_trusted(path) {
             phase = CallPhase::Ending;
         }
-        if direction == CallDirection::Outgoing {
-            if let Some(key) = self.uncertain_create.clone() {
-                if !self.registry()?.tracked().iter().any(|(p, _)| p == path) {
-                    self.registry
-                        .as_mut()
-                        .expect("configured")
-                        .register_outgoing(&key, path)?;
-                    self.cleanup.failed(path);
-                    self.uncertain_create = None;
-                }
-            }
+        if self.outgoing_path_lost && self.outgoing_stage.as_ref().is_some_and(|(_, stage)| {
+            matches!(stage, OutgoingStage::CreatedUnstarted { path: known } | OutgoingStage::StartDispatched { path: known } if known == path)
+        }) {
+            phase = CallPhase::Ending;
         }
+        // A new outgoing object after an errored Create is not the missing
+        // exact reply. Observe it independently; never borrow it for that key.
         let observed_phase = phase.clone();
         let events = self.registry.as_mut().context("Not configured")?.observe(
             path,
@@ -1694,7 +1850,7 @@ impl ModemManagerVoice {
         Ok(())
     }
 
-    fn sample_rate(&mut self, path: &str) -> Result<u32> {
+    fn verified_format(&mut self, path: &str) -> Result<VerifiedPcm> {
         self.ensure_control()?;
         let connection = self
             .connection
@@ -1740,7 +1896,7 @@ impl ModemManagerVoice {
             "GSM audio lifetime changed"
         );
         match self.provider.format(&actual, &format) {
-            Ok(pcm) => Ok(pcm.sample_rate_hz()),
+            Ok(pcm) => Ok(pcm),
             Err(error) => {
                 self.call_format_lost(path);
                 Err(error)
@@ -1748,11 +1904,47 @@ impl ModemManagerVoice {
         }
     }
 
+    fn sample_rate(&mut self, path: &str) -> Result<u32> {
+        self.verified_format(path).map(|pcm| pcm.sample_rate_hz())
+    }
+
     fn ensure_prepared_current(&mut self, key: &SessionKey, path: &str) -> Result<()> {
         let rate = self.sample_rate(path)?;
         anyhow::ensure!(
             self.format_admission.as_ref() == Some(&(key.clone(), self.selected_epoch, rate)),
             "GSM prepared audio belongs to an old admission"
+        );
+        Ok(())
+    }
+
+    fn ensure_created_current(&mut self, key: &SessionKey, path: &str, epoch: u64) -> Result<()> {
+        self.ensure_control()?;
+        anyhow::ensure!(
+            self.selected_epoch == epoch
+                && !self.provider_invalidated
+                && self.owner.as_ref() == Some(key)
+                && !self.outgoing_path_lost
+                && self.registry()?.path_for(key) == Some(path)
+                && self.outgoing_stage.as_ref()
+                    == Some(&(
+                        key.clone(),
+                        OutgoingStage::CreatedUnstarted { path: path.into() }
+                    ))
+                && !self.terminating.contains(path)
+                && self.cleanup.terminal_is_trusted(path),
+            "GSM created call belongs to an old or cancelled admission"
+        );
+        let proxy = self.proxy_for(path)?;
+        let state: i32 = proxy.get_property("State")?;
+        let direction: i32 = proxy.get_property("Direction")?;
+        drop(proxy);
+        self.ensure_control()?;
+        anyhow::ensure!(
+            state == 0
+                && direction == 2
+                && self.selected_epoch == epoch
+                && !self.provider_invalidated,
+            "GSM created call is no longer the admitted UNKNOWN outgoing object"
         );
         Ok(())
     }
@@ -1773,9 +1965,9 @@ impl ModemManagerVoice {
             return Ok(());
         }
         if self.prepared_audio.is_none() {
-            let rate = self.sample_rate(path)?;
+            let format = self.verified_format(path)?;
             self.ensure_control()?;
-            self.prepared_audio = Some(UsbPcmAudio::prepare(rate)?);
+            self.prepared_audio = Some(self.pcm.prepare(&format)?);
         }
         if audio_port.is_empty() {
             anyhow::ensure!(
@@ -1802,12 +1994,10 @@ impl ModemManagerVoice {
             .as_ref()
             .context("USB audio not prepared")?;
         anyhow::ensure!(
-            std::fs::canonicalize(port)? == prepared.port,
+            std::fs::canonicalize(port)? == prepared.port(),
             "Modem audio endpoint differs from prepared USB endpoint"
         );
-        self.audio = Some(UsbPcmAudio::start(
-            self.prepared_audio.take().expect("prepared"),
-        )?);
+        self.audio = Some(self.prepared_audio.take().expect("prepared").start()?);
         if let Err(error) = self.ensure_prepared_current(key, path) {
             self.invalidate_provider_audio();
             return Err(error);
@@ -1962,6 +2152,7 @@ impl GsmBackend for ModemManagerVoice {
 
     fn dial_session(&mut self, key: &SessionKey, number: &str) -> Result<()> {
         use yoyopod_protocol::call::CallTransport;
+        let epoch = self.selected_epoch;
         anyhow::ensure!(
             key.transport == CallTransport::Gsm && Some(key.generation) == self.generation,
             "Unknown or stale GSM generation"
@@ -1978,10 +2169,94 @@ impl GsmBackend for ModemManagerVoice {
         self.ensure_control()?;
         self.refresh_availability()?;
         anyhow::ensure!(self.cached.available, "{}", self.cached.unavailable_reason);
-        let _ = number;
-        // Task 5 supplies Create UNKNOWN -> current format -> prepare -> Start.
-        // Idle baseline never substitutes for a current Call's format proof.
-        bail!("GSM ordered outgoing audio preparation unavailable")
+        anyhow::ensure!(
+            epoch == self.selected_epoch && !self.provider_invalidated,
+            "GSM dialing admission expired"
+        );
+        let properties = HashMap::from([(
+            "number",
+            zvariant::OwnedValue::try_from(zvariant::Value::from(number.to_owned()))?,
+        )]);
+        self.owner = Some(key.clone());
+        self.uncertain_create = Some(key.clone());
+        self.outgoing_stage = Some((key.clone(), OutgoingStage::Creating));
+        self.outgoing_path_lost = false;
+        self.idle_calls_proven = false;
+        let create = Proxy::new(
+            self.connection.as_ref().context("No modem connection")?,
+            self.bound_owner()?,
+            self.modem.as_ref().context("No modem")?.as_str(),
+            VOICE_INTERFACE,
+        )?
+        .call::<_, _, OwnedObjectPath>("CreateCall", &(properties,));
+        let path = match create {
+            Ok(path) => path,
+            Err(error) => {
+                // Neither timeout nor a late native error proves no creation.
+                let _ = self.ensure_control();
+                return Err(error.into());
+            }
+        };
+        // Bind the returned native identity before consuming any lifecycle
+        // evidence or clearing Create uncertainty. Validation still owns it.
+        self.registry
+            .as_mut()
+            .context("Not configured")?
+            .register_outgoing(key, path.as_str())?;
+        self.outgoing_stage = Some((
+            key.clone(),
+            OutgoingStage::CreatedUnstarted {
+                path: path.to_string(),
+            },
+        ));
+        self.uncertain_create = None;
+        self.pending_events
+            .extend(self.registry.as_mut().expect("configured").observe(
+                path.as_str(),
+                yoyopod_protocol::call::CallDirection::Outgoing,
+                CallPhase::Preparing,
+                number,
+            ));
+        let preparation = (|| {
+            self.ensure_created_current(key, path.as_str(), epoch)?;
+            let format = self.verified_format(path.as_str())?;
+            self.format_admission = Some((key.clone(), epoch, format.sample_rate_hz()));
+            self.ensure_created_current(key, path.as_str(), epoch)?;
+            self.prepared_audio = Some(self.pcm.prepare(&format)?);
+            self.audio_deadline = Some(Instant::now() + Duration::from_secs(8));
+            self.ensure_created_current(key, path.as_str(), epoch)?;
+            self.ensure_prepared_current(key, path.as_str())?;
+            self.ensure_created_current(key, path.as_str(), epoch)
+        })();
+        if let Err(error) = preparation {
+            let _ = self.delete_created_unstarted(key);
+            return Err(error);
+        }
+        // Sticky before dispatch: no reply/error/UNKNOWN/CallDeleted can turn
+        // this key back into a deletable never-started object.
+        self.outgoing_stage = Some((
+            key.clone(),
+            OutgoingStage::StartDispatched {
+                path: path.to_string(),
+            },
+        ));
+        self.cleanup.failed(path.as_str());
+        let result = self
+            .proxy_for(path.as_str())?
+            .call::<_, _, ()>("Start", &());
+        self.ensure_control()?;
+        anyhow::ensure!(
+            epoch == self.selected_epoch
+                && !self.provider_invalidated
+                && self.owner.as_ref() == Some(key)
+                && self.registry()?.path_for(key) == Some(path.as_str())
+                && !self.terminating.contains(path.as_str()),
+            "GSM Start response belongs to an old admission"
+        );
+        self.ensure_prepared_current(key, path.as_str())?;
+        result?;
+        self.cleanup.confirmed(path.as_str());
+        Ok(())
     }
 
     fn apply_call(&mut self, command: &CallCommand) -> Result<()> {
@@ -2025,12 +2300,15 @@ impl GsmBackend for ModemManagerVoice {
                     );
                     self.owner = Some(command.key.clone());
                     let preparation = diagnostic
-                        .observe("audio_metadata", self.sample_rate(&path))
-                        .and_then(|rate| {
-                            self.format_admission =
-                                Some((command.key.clone(), self.selected_epoch, rate));
+                        .observe("audio_metadata", self.verified_format(&path))
+                        .and_then(|format| {
+                            self.format_admission = Some((
+                                command.key.clone(),
+                                self.selected_epoch,
+                                format.sample_rate_hz(),
+                            ));
                             diagnostic.observe("pcm_control", self.ensure_control())?;
-                            diagnostic.observe("pcm_prepare", UsbPcmAudio::prepare(rate))
+                            diagnostic.observe("pcm_prepare", self.pcm.prepare(&format))
                         });
                     match preparation {
                         Ok(prepared) => self.prepared_audio = Some(prepared),
@@ -2046,6 +2324,7 @@ impl GsmBackend for ModemManagerVoice {
                         self.ensure_prepared_current(&command.key, &path),
                     )?;
                     let epoch = self.selected_epoch;
+                    self.cleanup.failed(&path);
                     let proxy = diagnostic.observe("accept_proxy", self.proxy_for(&path))?;
                     diagnostic.native_accept_dispatched = Some(true);
                     diagnostic.record("native_accept", "dispatch", None);
@@ -2063,6 +2342,7 @@ impl GsmBackend for ModemManagerVoice {
                         self.cleanup.failed(&path);
                         return Err(error);
                     }
+                    self.cleanup.confirmed(&path);
                     Ok(())
                 }
                 CallAction::Reject(_) | CallAction::Hangup => self.targeted_hangup(&command.key),
@@ -2621,6 +2901,514 @@ mod tests {
             1,
             "qualified idle did not dispatch CreateCall: {result:?}"
         );
+    }
+
+    const TEST_OUTGOING_CALL: &str = "/org/freedesktop/ModemManager1/Call/99";
+
+    #[derive(Default)]
+    struct OutgoingEffects {
+        trace: Mutex<Vec<String>>,
+        paths: Mutex<Vec<OwnedObjectPath>>,
+        created: std::sync::atomic::AtomicBool,
+        format_seen: std::sync::atomic::AtomicBool,
+        state: std::sync::atomic::AtomicI32,
+        rate: std::sync::atomic::AtomicU32,
+        starts: std::sync::atomic::AtomicUsize,
+        accepts: std::sync::atomic::AtomicUsize,
+        hangups: std::sync::atomic::AtomicUsize,
+        deletes: Mutex<Vec<String>>,
+        fail_delete: std::sync::atomic::AtomicBool,
+        fail_prepare: std::sync::atomic::AtomicBool,
+        fail_create: std::sync::atomic::AtomicBool,
+        state_gate: PropertyGate,
+    }
+    impl OutgoingEffects {
+        fn record(&self, effect: &str) {
+            self.trace.lock().unwrap().push(effect.into());
+        }
+    }
+    struct OutgoingVoice(Arc<OutgoingEffects>);
+    #[zbus::interface(name = "org.freedesktop.ModemManager1.Modem.Voice")]
+    impl OutgoingVoice {
+        #[zbus(property)]
+        fn emergency_only(&self) -> bool {
+            false
+        }
+        #[zbus(property)]
+        fn calls(&self) -> Vec<OwnedObjectPath> {
+            self.0.paths.lock().unwrap().clone()
+        }
+        fn create_call(
+            &self,
+            properties: HashMap<String, zvariant::OwnedValue>,
+        ) -> zbus::fdo::Result<OwnedObjectPath> {
+            assert_eq!(
+                properties
+                    .get("number")
+                    .and_then(|v| <&str>::try_from(v).ok()),
+                Some("+49123456789")
+            );
+            self.0.record("create");
+            if self.0.fail_create.load(Ordering::SeqCst) {
+                return Err(zbus::fdo::Error::Failed(
+                    "synthetic ambiguous Create error".into(),
+                ));
+            }
+            self.0.created.store(true, Ordering::SeqCst);
+            let path = OwnedObjectPath::try_from(TEST_OUTGOING_CALL).unwrap();
+            self.0.paths.lock().unwrap().push(path.clone());
+            Ok(path)
+        }
+        fn delete_call(&self, path: OwnedObjectPath) -> zbus::fdo::Result<()> {
+            self.0.record("delete");
+            self.0.deletes.lock().unwrap().push(path.to_string());
+            if self.0.fail_delete.load(Ordering::SeqCst) {
+                return Err(zbus::fdo::Error::Failed("synthetic delete failure".into()));
+            }
+            self.0.paths.lock().unwrap().retain(|p| p != &path);
+            Ok(())
+        }
+    }
+    struct OutgoingCall(Arc<OutgoingEffects>);
+    #[zbus::interface(name = "org.freedesktop.ModemManager1.Call")]
+    impl OutgoingCall {
+        #[zbus(property)]
+        async fn state(
+            &self,
+            #[zbus(header)] header: Option<zbus::message::Header<'_>>,
+        ) -> zbus::fdo::Result<i32> {
+            let state = self.0.state.load(Ordering::SeqCst);
+            // Hold only the actual Properties.Get State reply, never the OM
+            // snapshot used by the preceding retained-collector barrier.
+            let gate = if header
+                .as_ref()
+                .and_then(|h| h.member())
+                .is_some_and(|m| m.as_str() == "Get")
+            {
+                self.0.state_gate.lock().unwrap().take()
+            } else {
+                None
+            };
+            if let Some((entered, release)) = gate {
+                entered.send(()).unwrap();
+                let deadline = Instant::now() + Duration::from_secs(3);
+                loop {
+                    match release.try_recv() {
+                        Ok(()) => break,
+                        Err(mpsc::TryRecvError::Empty) if Instant::now() < deadline => {
+                            async_io::Timer::after(Duration::from_millis(5)).await;
+                        }
+                        _ => {
+                            return Err(zbus::fdo::Error::Failed(
+                                "synthetic State gate expired".into(),
+                            ))
+                        }
+                    }
+                }
+            }
+            Ok(state)
+        }
+        #[zbus(property)]
+        fn direction(&self) -> i32 {
+            2
+        }
+        #[zbus(property)]
+        fn number(&self) -> &str {
+            "+49123456789"
+        }
+        #[zbus(property)]
+        fn audio_format(&self) -> HashMap<String, zvariant::OwnedValue> {
+            if self.0.created.load(Ordering::SeqCst)
+                && !self.0.format_seen.swap(true, Ordering::SeqCst)
+            {
+                self.0.record("format");
+            }
+            let rate = self.0.rate.load(Ordering::SeqCst);
+            if rate == 0 {
+                return HashMap::new();
+            }
+            HashMap::from([
+                ("encoding".into(), zvariant::Str::from("pcm").into()),
+                ("resolution".into(), zvariant::Str::from("s16le").into()),
+                ("rate".into(), rate.into()),
+            ])
+        }
+        #[zbus(property)]
+        fn audio_port(&self) -> &str {
+            "/dev/null"
+        }
+        fn start(&self) {
+            self.0.record("start");
+            self.0.starts.fetch_add(1, Ordering::SeqCst);
+            self.0.state.store(1, Ordering::SeqCst);
+        }
+        fn accept(&self) {
+            self.0.accepts.fetch_add(1, Ordering::SeqCst);
+        }
+        fn hangup(&self) {
+            self.0.hangups.fetch_add(1, Ordering::SeqCst);
+            self.0.state.store(7, Ordering::SeqCst);
+        }
+    }
+    struct FakePcmEngine(Arc<OutgoingEffects>);
+    struct FakePreparedPcm(Option<Arc<OutgoingEffects>>);
+    struct FakeActivePcm(Arc<OutgoingEffects>);
+    impl crate::gsm_pcm::PcmEngine for FakePcmEngine {
+        fn available(&self) -> bool {
+            true
+        }
+        fn prepare(&self, format: &VerifiedPcm) -> Result<Box<dyn PreparedPcm>> {
+            assert_eq!(format.sample_rate_hz(), 16000);
+            self.0.record("prepare");
+            anyhow::ensure!(
+                !self.0.fail_prepare.load(Ordering::SeqCst),
+                "synthetic preparation failure"
+            );
+            Ok(Box::new(FakePreparedPcm(Some(self.0.clone()))))
+        }
+    }
+    impl PreparedPcm for FakePreparedPcm {
+        fn port(&self) -> &std::path::Path {
+            std::path::Path::new("/dev/null")
+        }
+        fn start(mut self: Box<Self>) -> Result<Box<dyn ActivePcm>> {
+            let effects = self.0.take().unwrap();
+            effects.record("pcm_start");
+            Ok(Box::new(FakeActivePcm(effects)))
+        }
+    }
+    impl Drop for FakePreparedPcm {
+        fn drop(&mut self) {
+            if let Some(effects) = &self.0 {
+                effects.record("pcm_join");
+            }
+        }
+    }
+    impl ActivePcm for FakeActivePcm {
+        fn set_mute(&self, _: bool) {}
+        fn healthy(&mut self) -> Result<bool> {
+            Ok(true)
+        }
+    }
+    impl Drop for FakeActivePcm {
+        fn drop(&mut self) {
+            self.0.record("pcm_join");
+        }
+    }
+    struct OutgoingFixture {
+        // Keep the daemon and unique owner alive until after the backend.
+        backend: ModemManagerVoice,
+        owner: Connection,
+        effects: Arc<OutgoingEffects>,
+        _bus: PrivateBus,
+    }
+    impl OutgoingFixture {
+        fn new_qualified() -> Self {
+            let bus = PrivateBus::start();
+            let owner = bus.connection();
+            let effects = Arc::new(OutgoingEffects::default());
+            effects.rate.store(16000, Ordering::SeqCst);
+            owner
+                .object_server()
+                .at("/org/freedesktop/ModemManager1", zbus::fdo::ObjectManager)
+                .unwrap();
+            owner
+                .object_server()
+                .at(
+                    "/org/freedesktop/ModemManager1",
+                    ReconnectManager { version: "1.24.0" },
+                )
+                .unwrap();
+            owner
+                .object_server()
+                .at(TEST_MODEM0, ReconnectModem)
+                .unwrap();
+            owner
+                .object_server()
+                .at(TEST_MODEM0, OutgoingVoice(effects.clone()))
+                .unwrap();
+            owner
+                .object_server()
+                .at(TEST_OUTGOING_CALL, OutgoingCall(effects.clone()))
+                .unwrap();
+            allow_replacement(&owner);
+            let mut backend = ModemManagerVoice::default();
+            backend.configure(9, None).unwrap();
+            // Clearly synthetic endpoint: the fake engine never opens it. The
+            // real inventory/canonicalization/equality checks still execute.
+            backend.provider =
+                crate::gsm_provider::ProviderGate::test_fixture_with_audio_port("null");
+            backend.pcm = PcmAdapter::with_engine(FakePcmEngine(effects.clone()));
+            backend.connection = Some(bus.connection());
+            assert!(backend.refresh().unwrap().available);
+            Self {
+                backend,
+                owner,
+                effects,
+                _bus: bus,
+            }
+        }
+        fn key(&self) -> SessionKey {
+            SessionKey {
+                transport: yoyopod_protocol::call::CallTransport::Gsm,
+                generation: 9,
+                call_id: "runtime-outgoing-1".into(),
+            }
+        }
+        fn dial(&mut self, key: &SessionKey, number: &str) -> Result<()> {
+            self.backend.dial_session(key, number)
+        }
+        fn trace(&self) -> Vec<String> {
+            self.effects.trace.lock().unwrap().clone()
+        }
+        fn native_dial_count(&self) -> usize {
+            self.effects.starts.load(Ordering::SeqCst)
+        }
+        fn started_key(&self) -> Option<SessionKey> {
+            self.backend
+                .outgoing_stage
+                .as_ref()
+                .and_then(|(key, stage)| {
+                    matches!(stage, OutgoingStage::StartDispatched { .. }).then(|| key.clone())
+                })
+        }
+    }
+
+    #[test]
+    fn gsm_outgoing_orders_created_unknown_format_prepare_start_and_active_pcm() {
+        let mut fixture = OutgoingFixture::new_qualified();
+        let key = fixture.key();
+        assert_eq!(
+            fixture.backend.bound_owner().unwrap(),
+            fixture.owner.unique_name().unwrap().as_str()
+        );
+        let collector = fixture
+            .backend
+            .signals
+            .as_ref()
+            .unwrap()
+            .connection
+            .unique_name()
+            .unwrap()
+            .to_string();
+        fixture.dial(&key, "+49123456789").unwrap();
+        assert_eq!(fixture.trace(), ["create", "format", "prepare", "start"]);
+        assert_eq!(fixture.native_dial_count(), 1);
+        assert_eq!(fixture.started_key(), Some(key.clone()));
+        assert!(fixture.backend.prepared_audio.is_some());
+        assert!(fixture.backend.audio.is_none());
+        assert!(fixture.backend.owns_voice(&key));
+        assert!(fixture
+            .backend
+            .drain_call_events()
+            .iter()
+            .all(|event| !matches!(event, CallManagerWireEvent::Offer(_))));
+        fixture.effects.state.store(4, Ordering::SeqCst);
+        fixture.backend.observe_path(TEST_OUTGOING_CALL).unwrap();
+        assert_eq!(
+            fixture.trace().last().map(String::as_str),
+            Some("pcm_start")
+        );
+        assert!(fixture.backend.audio.is_some());
+        assert_eq!(
+            fixture
+                .backend
+                .signals
+                .as_ref()
+                .unwrap()
+                .connection
+                .unique_name()
+                .unwrap()
+                .as_str(),
+            collector
+        );
+        fixture.backend.targeted_hangup(&key).unwrap();
+        assert_eq!(fixture.trace().last().map(String::as_str), Some("pcm_join"));
+        fixture.backend.observe_path(TEST_OUTGOING_CALL).unwrap();
+        assert!(!fixture.backend.owns_voice(&key));
+        assert_eq!(
+            *fixture.effects.deletes.lock().unwrap(),
+            [TEST_OUTGOING_CALL]
+        );
+    }
+
+    #[test]
+    fn gsm_outgoing_invalid_format_deletes_only_exact_unstarted_unknown_and_retains_failed_delete()
+    {
+        for failed_delete in [false, true] {
+            let mut fixture = OutgoingFixture::new_qualified();
+            let key = fixture.key();
+            fixture.effects.rate.store(0, Ordering::SeqCst);
+            fixture
+                .effects
+                .fail_delete
+                .store(failed_delete, Ordering::SeqCst);
+            assert!(fixture.dial(&key, "+49123456789").is_err());
+            assert_eq!(fixture.trace(), ["create", "format", "delete"]);
+            assert_eq!(
+                *fixture.effects.deletes.lock().unwrap(),
+                [TEST_OUTGOING_CALL]
+            );
+            assert_eq!(fixture.native_dial_count(), 0);
+            assert_eq!(fixture.effects.hangups.load(Ordering::SeqCst), 0);
+            assert_eq!(fixture.backend.owns_voice(&key), failed_delete);
+            let events = fixture.backend.drain_call_events();
+            assert!(events
+                .iter()
+                .all(|e| !matches!(e, CallManagerWireEvent::Offer(_))));
+            assert_eq!(events.iter().any(|e| matches!(e,CallManagerWireEvent::Update(u) if u.key==key && u.phase==CallPhase::Ended)), !failed_delete);
+            if failed_delete {
+                assert!(
+                    !fixture
+                        .backend
+                        .reconciliation()
+                        .unwrap()
+                        .native_calls_quiescent
+                );
+                fixture.effects.paths.lock().unwrap().clear();
+                fixture.backend.reconcile_paths().unwrap();
+                assert!(!fixture.backend.owns_voice(&key));
+            }
+        }
+    }
+
+    #[test]
+    fn gsm_outgoing_cleanup_rechecks_identity_after_held_state_reply_and_path_reuse() {
+        for unstarted in [false, true] {
+            let mut fixture = OutgoingFixture::new_qualified();
+            let key = fixture.key();
+            if unstarted {
+                fixture.effects.rate.store(0, Ordering::SeqCst);
+                fixture.effects.fail_delete.store(true, Ordering::SeqCst);
+                assert!(fixture.dial(&key, "+49123456789").is_err());
+            } else {
+                fixture.dial(&key, "+49123456789").unwrap();
+            }
+            let before_deletes = fixture.effects.deletes.lock().unwrap().len();
+            let collector = fixture
+                .backend
+                .signals
+                .as_ref()
+                .unwrap()
+                .connection
+                .unique_name()
+                .unwrap()
+                .to_string();
+            let (entered, held) = mpsc::channel();
+            let (release, released) = mpsc::channel();
+            *fixture.effects.state_gate.lock().unwrap() = Some((entered, released));
+            let OutgoingFixture {
+                mut backend,
+                owner,
+                effects,
+                _bus,
+            } = fixture;
+            let old_key = key.clone();
+            let request = thread::spawn(move || {
+                let result = if unstarted {
+                    backend.delete_created_unstarted(&old_key)
+                } else {
+                    backend.targeted_hangup(&old_key)
+                };
+                (backend, result)
+            });
+            held.recv_timeout(Duration::from_secs(3)).unwrap();
+            // Real same-owner removal/readdition evidence arrives while the
+            // old object's explicit State response is still held.
+            owner
+                .emit_signal(
+                    None::<&str>,
+                    TEST_MODEM0,
+                    VOICE_INTERFACE,
+                    "CallDeleted",
+                    &(OwnedObjectPath::try_from(TEST_OUTGOING_CALL).unwrap(),),
+                )
+                .unwrap();
+            owner
+                .emit_signal(
+                    None::<&str>,
+                    "/org/freedesktop/ModemManager1",
+                    "org.freedesktop.DBus.ObjectManager",
+                    "InterfacesRemoved",
+                    &(
+                        OwnedObjectPath::try_from(TEST_OUTGOING_CALL).unwrap(),
+                        vec![CALL_INTERFACE],
+                    ),
+                )
+                .unwrap();
+            effects.state.store(0, Ordering::SeqCst);
+            owner
+                .emit_signal(
+                    None::<&str>,
+                    TEST_MODEM0,
+                    VOICE_INTERFACE,
+                    "CallAdded",
+                    &(OwnedObjectPath::try_from(TEST_OUTGOING_CALL).unwrap(),),
+                )
+                .unwrap();
+            release.send(()).unwrap();
+            let (mut backend, result) = request.join().unwrap();
+            assert!(result.is_err());
+            assert!(backend.outgoing_path_lost);
+            assert_eq!(effects.hangups.load(Ordering::SeqCst), 0);
+            assert_eq!(effects.deletes.lock().unwrap().len(), before_deletes);
+            assert!(backend.owns_voice(&key));
+            assert!(!backend.reconciliation().unwrap().native_calls_quiescent);
+            assert!(backend.drain_call_events().iter().all(|e| !matches!(e, CallManagerWireEvent::Update(u) if u.key==key && u.phase==CallPhase::Ended)));
+            assert_eq!(
+                backend
+                    .signals
+                    .as_ref()
+                    .unwrap()
+                    .connection
+                    .unique_name()
+                    .unwrap()
+                    .as_str(),
+                collector
+            );
+        }
+    }
+
+    #[test]
+    fn gsm_outgoing_create_error_never_borrows_late_unrelated_unknown_as_exact_creation() {
+        let mut fixture = OutgoingFixture::new_qualified();
+        let key = fixture.key();
+        fixture.effects.fail_create.store(true, Ordering::SeqCst);
+        assert!(fixture.dial(&key, "+49123456789").is_err());
+        assert_eq!(fixture.backend.uncertain_create.as_ref(), Some(&key));
+        assert_eq!(
+            fixture.backend.outgoing_stage.as_ref(),
+            Some(&(key.clone(), OutgoingStage::Creating))
+        );
+        // A new native UNKNOWN after the error is observable, but its path was
+        // never returned by this Create reply and cannot authorize old-key Delete.
+        fixture.effects.created.store(true, Ordering::SeqCst);
+        fixture
+            .effects
+            .paths
+            .lock()
+            .unwrap()
+            .push(OwnedObjectPath::try_from(TEST_OUTGOING_CALL).unwrap());
+        fixture.backend.reconcile_paths().unwrap();
+        assert_eq!(fixture.backend.registry().unwrap().path_for(&key), None);
+        assert!(fixture.backend.delete_created_unstarted(&key).is_err());
+        assert!(fixture.backend.targeted_hangup(&key).is_err());
+        assert_eq!(fixture.backend.uncertain_create.as_ref(), Some(&key));
+        assert!(fixture.backend.owns_voice(&key));
+        assert!(fixture.effects.deletes.lock().unwrap().is_empty());
+        assert_eq!(fixture.native_dial_count(), 0);
+        assert_eq!(fixture.effects.hangups.load(Ordering::SeqCst), 0);
+        fixture.effects.paths.lock().unwrap().clear();
+        fixture.backend.reconcile_paths().unwrap();
+        assert!(fixture.backend.owns_voice(&key));
+        assert!(
+            !fixture
+                .backend
+                .reconciliation()
+                .unwrap()
+                .native_calls_quiescent
+        );
+        assert!(fixture.backend.drain_call_events().iter().all(|e| !matches!(e,CallManagerWireEvent::Update(u) if u.key==key && u.phase==CallPhase::Ended)));
     }
 
     #[test]
