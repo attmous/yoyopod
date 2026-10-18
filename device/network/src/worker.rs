@@ -1583,7 +1583,7 @@ where
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::bluetooth::{BluetoothAccessory, BluetoothCapabilities};
     use crate::wifi::{
@@ -1663,6 +1663,123 @@ mod tests {
     }
 
     struct RecordingGsmBackend(Arc<Mutex<Vec<String>>>);
+
+    pub(crate) enum GsmLeaseOutcome {
+        Uncertain,
+        ReleasedCancellation,
+        OwnedSuccess,
+    }
+
+    // Runs the production enqueue/drain path with a real supplied GSM actor.
+    // Only the cellular data controller is the existing off-device fake.
+    pub(crate) fn assert_gsm_outgoing_uncertain_lease(
+        gsm: &GsmWorker,
+        key: &SessionKey,
+        mut sessions: Vec<CallUpdate>,
+        envelope: WorkerEnvelope,
+        pending_requests: &[&str],
+        expected: GsmLeaseOutcome,
+        during_request: impl FnOnce(&GsmWorker, &mut dyn FnMut(&WorkerEnvelope) -> Result<()>),
+    ) -> Vec<WorkerEnvelope> {
+        let modem = NoFixModem::default();
+        let opens = modem.opened.clone();
+        let suspends = modem.voice_suspends.clone();
+        let ppp = modem.ppp_starts.clone();
+        let mut runtime = NetworkRuntime::new(
+            "test",
+            NetworkHostConfig {
+                enabled: true,
+                ..Default::default()
+            },
+            modem,
+        );
+        runtime.start();
+        let before_opens = *opens.lock().unwrap();
+        let before_ppp = *ppp.lock().unwrap();
+        let primary = envelope.request_id.clone().unwrap();
+        let (expected_ok, expected_held, data_held) = match expected {
+            GsmLeaseOutcome::Uncertain => (false, true, true),
+            GsmLeaseOutcome::ReleasedCancellation => (false, false, false),
+            GsmLeaseOutcome::OwnedSuccess => (true, true, true),
+        };
+        enqueue_gsm_command(
+            &mut runtime,
+            gsm,
+            Some(key.generation),
+            &sessions,
+            &envelope,
+        )
+        .unwrap();
+        assert!(runtime.voice_suspended());
+        assert_eq!(*suspends.lock().unwrap(), 1);
+        during_request(gsm, &mut |command| {
+            enqueue_gsm_command(&mut runtime, gsm, Some(key.generation), &sessions, command)
+        });
+        let mut generation = Some(key.generation);
+        let mut reconciled = true;
+        let mut quarantine = false;
+        let mut output = Vec::new();
+        let deadline = Instant::now() + Duration::from_secs(3);
+        loop {
+            drain_gsm_events(
+                &mut output,
+                &mut runtime,
+                gsm,
+                &mut generation,
+                &mut sessions,
+                &mut reconciled,
+                &mut quarantine,
+            )
+            .unwrap();
+            let events: Vec<_> = String::from_utf8_lossy(&output)
+                .lines()
+                .map(|line| WorkerEnvelope::decode(line.as_bytes()).unwrap())
+                .collect();
+            if pending_requests
+                .iter()
+                .all(|id| events.iter().any(|e| e.request_id.as_deref() == Some(*id)))
+            {
+                let completed = events
+                    .iter()
+                    .find(|e| e.request_id.as_deref() == Some(primary.as_str()))
+                    .unwrap();
+                assert_eq!(completed.payload["ok"], expected_ok);
+                assert_eq!(completed.payload["voice_held"], expected_held);
+                assert_eq!(completed.payload["key"], serde_json::json!(key));
+                if data_held {
+                    assert!(events.iter().all(|e| e.message_type != "call.update"
+                        || e.payload["key"] != serde_json::json!(key)
+                        || e.payload["phase"] != "ended"));
+                    assert!(runtime.voice_suspended());
+                    assert_eq!(*opens.lock().unwrap(), before_opens);
+                    assert_eq!(*ppp.lock().unwrap(), before_ppp);
+                    assert!(runtime
+                        .suspend_for_voice_session(&SessionKey {
+                            call_id: "runtime-outgoing-99".into(),
+                            ..key.clone()
+                        })
+                        .is_err());
+                    runtime.resume_after_voice_session(&SessionKey {
+                        call_id: "wrong-key".into(),
+                        ..key.clone()
+                    });
+                    assert!(runtime.voice_suspended());
+                } else {
+                    assert!(!runtime.voice_suspended());
+                    assert_eq!(*opens.lock().unwrap(), before_opens + 1);
+                    assert_eq!(*ppp.lock().unwrap(), before_ppp + 1);
+                }
+                assert_eq!(*suspends.lock().unwrap(), 1);
+                return events;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "actual GSM completion missing: {}",
+                String::from_utf8_lossy(&output)
+            );
+            thread::sleep(Duration::from_millis(5));
+        }
+    }
 
     impl crate::gsm::GsmBackend for RecordingGsmBackend {
         fn reconciliation(&self) -> Option<crate::gsm::GsmReconciliation> {

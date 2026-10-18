@@ -229,19 +229,161 @@ pub struct GsmWorker {
     states: Receiver<GsmCallState>,
     events: Receiver<GsmEvent>,
     thread: Option<JoinHandle<()>>,
+    cancellations: Option<Arc<AdmissionCancellations>>,
+}
+
+#[derive(Default)]
+struct AdmissionCancellations(std::sync::Mutex<AdmissionLedger>);
+
+#[derive(Default)]
+struct AdmissionLedger {
+    generation: Option<u64>,
+    retired: [u64; 2],
+    entries: Vec<(SessionKey, u64, bool)>,
+}
+
+impl AdmissionCancellations {
+    fn configure(&self, generation: u64) -> Result<()> {
+        let mut ledger = self
+            .0
+            .lock()
+            .map_err(|_| anyhow::anyhow!("GSM admission lock poisoned"))?;
+        if ledger.generation == Some(generation) {
+            return Ok(());
+        }
+        anyhow::ensure!(
+            ledger.entries.is_empty() && ledger.generation.is_none_or(|old| generation > old),
+            "GSM admission generation still live or stale"
+        );
+        *ledger = AdmissionLedger {
+            generation: Some(generation),
+            ..Default::default()
+        };
+        Ok(())
+    }
+
+    fn register(&self, key: &SessionKey, epoch: u64) -> Result<()> {
+        anyhow::ensure!(
+            key.transport == yoyopod_protocol::call::CallTransport::Gsm,
+            "Invalid GSM admission transport"
+        );
+        let (namespace, serial) =
+            yoyopod_protocol::call::call_ordinal(&key.transport, &key.call_id)
+                .context("Invalid GSM admission key")?;
+        let mut ledger = self
+            .0
+            .lock()
+            .map_err(|_| anyhow::anyhow!("GSM admission lock poisoned"))?;
+        anyhow::ensure!(
+            ledger
+                .generation
+                .is_none_or(|generation| generation == key.generation),
+            "GSM admission generation changed"
+        );
+        ledger.generation = Some(key.generation);
+        if let Some((_, admitted_epoch, cancelled)) = ledger
+            .entries
+            .iter()
+            .find(|(candidate, _, _)| candidate == key)
+        {
+            anyhow::ensure!(
+                *admitted_epoch == epoch && !cancelled,
+                "GSM admission cancelled or expired"
+            );
+        } else {
+            anyhow::ensure!(
+                serial > ledger.retired[namespace],
+                "GSM admission key retired"
+            );
+            anyhow::ensure!(
+                ledger.entries.len() < yoyopod_protocol::call::MAX_LIVE_CALLS,
+                "GSM admission capacity exhausted"
+            );
+            ledger.entries.push((key.clone(), epoch, false));
+        }
+        Ok(())
+    }
+
+    fn cancel(&self, key: &SessionKey) -> Result<()> {
+        let mut ledger = self
+            .0
+            .lock()
+            .map_err(|_| anyhow::anyhow!("GSM admission lock poisoned"))?;
+        if let Some((_, _, cancelled)) = ledger
+            .entries
+            .iter_mut()
+            .find(|(candidate, _, _)| candidate == key)
+        {
+            *cancelled = true;
+        }
+        Ok(())
+    }
+
+    fn retire(&self, key: &SessionKey) -> Result<()> {
+        let mut ledger = self
+            .0
+            .lock()
+            .map_err(|_| anyhow::anyhow!("GSM admission lock poisoned"))?;
+        if let Some(index) = ledger
+            .entries
+            .iter()
+            .position(|(candidate, _, _)| candidate == key)
+        {
+            let (namespace, serial) =
+                yoyopod_protocol::call::call_ordinal(&key.transport, &key.call_id)
+                    .context("Invalid GSM admission key")?;
+            ledger.retired[namespace] = ledger.retired[namespace].max(serial);
+            ledger.entries.remove(index);
+        }
+        Ok(())
+    }
+
+    fn ensure_current(ledger: &AdmissionLedger, key: &SessionKey, epoch: u64) -> Result<()> {
+        anyhow::ensure!(
+            ledger
+                .entries
+                .iter()
+                .any(|(candidate, admitted_epoch, cancelled)| candidate == key
+                    && *admitted_epoch == epoch
+                    && !cancelled),
+            "GSM admission cancelled or expired"
+        );
+        Ok(())
+    }
+
+    fn check(&self, key: &SessionKey, epoch: u64) -> Result<()> {
+        let entries = self
+            .0
+            .lock()
+            .map_err(|_| anyhow::anyhow!("GSM admission lock poisoned"))?;
+        Self::ensure_current(&entries, key, epoch)
+    }
 }
 
 impl GsmWorker {
     pub fn start() -> Self {
-        Self::with_backend(ModemManagerVoice::default())
+        Self::with_modem_backend(ModemManagerVoice::default())
     }
 
-    pub fn with_backend(mut backend: impl GsmBackend) -> Self {
+    fn with_modem_backend(backend: ModemManagerVoice) -> Self {
+        let cancellations = backend.cancellations.clone();
+        Self::with_backend_and_cancellations(backend, Some(cancellations))
+    }
+
+    pub fn with_backend(backend: impl GsmBackend) -> Self {
+        Self::with_backend_and_cancellations(backend, None)
+    }
+
+    fn with_backend_and_cancellations(
+        mut backend: impl GsmBackend,
+        cancellations: Option<Arc<AdmissionCancellations>>,
+    ) -> Self {
         let (commands, receive_commands) = mpsc::channel();
         let (send_states, states) = mpsc::channel();
         let (send_events, events) = mpsc::channel();
         let selected_epoch = Arc::new(AtomicU64::new(backend.selected_modem_epoch()));
         let thread_epoch = selected_epoch.clone();
+        let thread_cancellations = cancellations.clone();
         let thread = thread::spawn(move || {
             let mut previous = None;
             let mut previous_reconciliation = None;
@@ -326,6 +468,11 @@ impl GsmWorker {
                     }) => {
                         let error = backend
                             .configure(generation, pcm_sample_rate_hz)
+                            .and_then(|()| {
+                                thread_cancellations
+                                    .as_ref()
+                                    .map_or(Ok(()), |latch| latch.configure(generation))
+                            })
                             .err()
                             .map(|error| format!("{error:#}"));
                         let _ = send_events.send(GsmEvent::Configured {
@@ -425,11 +572,29 @@ impl GsmWorker {
                 }
                 // Publish generation-to-native-owner evidence before session facts.
                 for event in call_events {
+                    if let (Some(latch), CallManagerWireEvent::Update(update)) =
+                        (&thread_cancellations, &event)
+                    {
+                        if update.phase == CallPhase::Ended {
+                            let _ = latch.retire(&update.key);
+                        }
+                    }
                     let _ = send_events.send(GsmEvent::Call(event));
                 }
                 // Loss and native facts must close the outer data barrier before
                 // a keyed completion can decide whether its reservation releases.
                 if let Some(completion) = completion {
+                    if let (
+                        Some(latch),
+                        GsmEvent::Completed {
+                            key,
+                            voice_held: false,
+                            ..
+                        },
+                    ) = (&thread_cancellations, &completion)
+                    {
+                        let _ = latch.retire(key);
+                    }
                     let _ = send_events.send(completion);
                 }
                 if let Err(error) = result {
@@ -453,6 +618,7 @@ impl GsmWorker {
             states,
             events,
             thread: Some(thread),
+            cancellations,
         }
     }
 
@@ -463,6 +629,18 @@ impl GsmWorker {
         self.selected_epoch.load(Ordering::SeqCst)
     }
     pub(crate) fn send_at_epoch(&self, command: GsmCommand, epoch: u64) -> Result<()> {
+        use yoyopod_protocol::call::CallAction;
+        if let Some(latch) = &self.cancellations {
+            match &command {
+                GsmCommand::DialSession { key, .. } => latch.register(key, epoch)?,
+                GsmCommand::Action { command, .. } => match command.action {
+                    CallAction::Answer => latch.register(&command.key, epoch)?,
+                    CallAction::Reject(_) | CallAction::Hangup => latch.cancel(&command.key)?,
+                    CallAction::SetMute(_) => {}
+                },
+                _ => {}
+            }
+        }
         self.commands
             .send((epoch, command))
             .context("GSM worker unavailable")
@@ -701,6 +879,9 @@ struct ModemManagerVoice {
     service_bus_id: Option<String>,
     service_invalidated: bool,
     terminating: std::collections::HashSet<String>,
+    // Exact successful EndCall proof belongs to the still-registered old key.
+    // A later path tombstone fences reuse, while fresh absence can release it.
+    confirmed_hangups: Vec<(SessionKey, String)>,
     connection: Option<Connection>,
     modem: Option<OwnedObjectPath>,
     signals: Option<ModemSignals>,
@@ -729,10 +910,24 @@ struct ModemManagerVoice {
     outgoing_stage: Option<(SessionKey, OutgoingStage)>,
     // Removal followed by reuse cannot lend the new object's identity to an
     // old key. Only trusted absence (never-started) or recovery can clear it.
-    outgoing_path_lost: bool,
+    lost_call_paths: std::collections::HashSet<String>,
+    accept_dispatched: Option<SessionKey>,
+    cancellations: Arc<AdmissionCancellations>,
 }
 
 impl ModemManagerVoice {
+    fn call_identity_removed(&mut self, path: &str) {
+        if self
+            .registry
+            .as_ref()
+            .is_none_or(|registry| !registry.tracked().iter().any(|(known, _)| known == path))
+        {
+            return;
+        }
+        self.lost_call_paths.insert(path.into());
+        self.cleanup.failed(path);
+        self.call_format_lost(path);
+    }
     fn audio_key(&self) -> Option<&SessionKey> {
         self.owner
             .as_ref()
@@ -1027,19 +1222,7 @@ impl ModemManagerVoice {
             if header.member().map(|s| s.as_str()) == Some("CallAdded") {
                 self.idle_calls_proven = false;
             } else if let Ok((path,)) = message.body().deserialize::<(OwnedObjectPath,)>() {
-                // A reused native path cannot continue a prepared admission.
-                if self
-                    .owner
-                    .as_ref()
-                    .and_then(|key| self.registry.as_ref()?.path_for(key))
-                    == Some(path.as_str())
-                    && self.outgoing_stage.is_some()
-                    && !(self.terminating.contains(path.as_str())
-                        && self.cleanup.terminal_is_trusted(path.as_str()))
-                {
-                    self.outgoing_path_lost = true;
-                    self.invalidate_provider_audio();
-                }
+                self.call_identity_removed(path.as_str());
             }
         }
         if header.sender().map(|s| s.as_str()) != self.service_owner.as_deref()
@@ -1052,18 +1235,8 @@ impl ModemManagerVoice {
             .body()
             .deserialize::<(OwnedObjectPath, Vec<String>)>()
         {
-            if interfaces.iter().any(|i| i == CALL_INTERFACE)
-                && self
-                    .owner
-                    .as_ref()
-                    .and_then(|key| self.registry.as_ref()?.path_for(key))
-                    == Some(path.as_str())
-                && self.outgoing_stage.is_some()
-                && !(self.terminating.contains(path.as_str())
-                    && self.cleanup.terminal_is_trusted(path.as_str()))
-            {
-                self.outgoing_path_lost = true;
-                self.invalidate_provider_audio();
+            if interfaces.iter().any(|i| i == CALL_INTERFACE) {
+                self.call_identity_removed(path.as_str());
             }
             if self.modem.as_ref() == Some(&path)
                 && interfaces
@@ -1426,15 +1599,17 @@ impl ModemManagerVoice {
     }
 
     fn object_deleted(&mut self, path: &str, key: &SessionKey) {
-        if self
-            .outgoing_stage
-            .as_ref()
-            .is_some_and(|(candidate, stage)| {
-                candidate == key && matches!(stage, OutgoingStage::StartDispatched { .. })
-            })
-            && !(self.terminating.contains(path)
-                && self.cleanup.terminal_is_trusted(path)
-                && !self.outgoing_path_lost)
+        if (self.accept_dispatched.as_ref() == Some(key)
+            || self
+                .outgoing_stage
+                .as_ref()
+                .is_some_and(|(candidate, stage)| {
+                    candidate == key && matches!(stage, OutgoingStage::StartDispatched { .. })
+                }))
+            && !self
+                .confirmed_hangups
+                .iter()
+                .any(|(candidate, acknowledged)| candidate == key && acknowledged == path)
         {
             // Absence/CallDeleted can race a dispatched Start. It cannot prove
             // that its native operation ended; retain this exact key and lease.
@@ -1444,6 +1619,9 @@ impl ModemManagerVoice {
             return;
         }
         self.terminating.remove(path);
+        self.confirmed_hangups
+            .retain(|(candidate, acknowledged)| candidate != key || acknowledged != path);
+        self.lost_call_paths.remove(path);
         if let Some(old) = self.registry.as_ref().and_then(|r| r.latest(key)).cloned() {
             self.cleanup.confirmed(path);
             let events = self.registry.as_mut().expect("configured").observe(
@@ -1471,13 +1649,18 @@ impl ModemManagerVoice {
             self.audio_deadline = None;
             self.active_since = None;
             self.owner = None;
+            if let Err(error) = self.cancellations.retire(key) {
+                eprintln!("GSM admission retirement failed: {error:#}");
+            }
             if self
                 .outgoing_stage
                 .as_ref()
                 .is_some_and(|(candidate, _)| candidate == key)
             {
                 self.outgoing_stage = None;
-                self.outgoing_path_lost = false;
+            }
+            if self.accept_dispatched.as_ref() == Some(key) {
+                self.accept_dispatched = None;
             }
             if self.uncertain_create.as_ref() == Some(key) {
                 self.uncertain_create = None;
@@ -1507,6 +1690,9 @@ impl ModemManagerVoice {
             .remove(key)
         {
             self.terminating.remove(&path);
+            self.confirmed_hangups
+                .retain(|(candidate, acknowledged)| candidate != key || acknowledged != &path);
+            self.lost_call_paths.remove(&path);
         }
         Ok(())
     }
@@ -1588,11 +1774,7 @@ impl ModemManagerVoice {
         let owner = self.owner.clone();
         let stage = self.outgoing_stage.clone();
         anyhow::ensure!(
-            !self.outgoing_path_lost
-                || self
-                    .outgoing_stage
-                    .as_ref()
-                    .is_none_or(|(candidate, _)| candidate != key),
+            !self.lost_call_paths.contains(&path),
             "GSM native call identity was lost"
         );
         let state: i32 = self.proxy_for(&path)?.get_property("State")?;
@@ -1621,8 +1803,16 @@ impl ModemManagerVoice {
         self.ensure_cleanup_identity(key, &path, owner.as_ref(), stage.as_ref())?;
         let result = self.proxy_for(&path)?.call::<_, _, ()>("Hangup", &());
         self.ensure_control()?;
+        self.ensure_cleanup_identity(key, &path, owner.as_ref(), stage.as_ref())?;
         match result {
             Ok(()) => {
+                if !self
+                    .confirmed_hangups
+                    .iter()
+                    .any(|(candidate, acknowledged)| candidate == key && acknowledged == &path)
+                {
+                    self.confirmed_hangups.push((key.clone(), path.clone()));
+                }
                 self.cleanup.confirmed(&path);
                 Ok(())
             }
@@ -1644,8 +1834,7 @@ impl ModemManagerVoice {
             self.registry()?.path_for(key) == Some(path)
                 && self.owner.as_ref() == owner
                 && self.outgoing_stage.as_ref() == stage
-                && (!self.outgoing_path_lost
-                    || stage.is_none_or(|(candidate, _)| candidate != key)),
+                && !self.lost_call_paths.contains(path),
             "GSM cleanup native identity changed"
         );
         Ok(())
@@ -1658,7 +1847,7 @@ impl ModemManagerVoice {
         let stage = self.outgoing_stage.clone();
         anyhow::ensure!(
             self.owner.as_ref() == Some(key)
-                && !self.outgoing_path_lost
+                && !self.lost_call_paths.contains(&path)
                 && self.outgoing_stage.as_ref()
                     == Some(&(
                         key.clone(),
@@ -1729,9 +1918,7 @@ impl ModemManagerVoice {
         if phase == CallPhase::Ended && !self.cleanup.terminal_is_trusted(path) {
             phase = CallPhase::Ending;
         }
-        if self.outgoing_path_lost && self.outgoing_stage.as_ref().is_some_and(|(_, stage)| {
-            matches!(stage, OutgoingStage::CreatedUnstarted { path: known } | OutgoingStage::StartDispatched { path: known } if known == path)
-        }) {
+        if self.lost_call_paths.contains(path) {
             phase = CallPhase::Ending;
         }
         // A new outgoing object after an errored Create is not the missing
@@ -1818,6 +2005,14 @@ impl ModemManagerVoice {
                     }
                     if self.audio.is_none() {
                         // A native Active alone is not audio readiness.
+                        self.pending_events.extend(
+                            self.registry.as_mut().expect("configured").observe(
+                                path,
+                                direction.clone(),
+                                CallPhase::Preparing,
+                                &number,
+                            ),
+                        );
                         return Ok(());
                     }
                     self.cached.state = "active".into();
@@ -1919,11 +2114,12 @@ impl ModemManagerVoice {
 
     fn ensure_created_current(&mut self, key: &SessionKey, path: &str, epoch: u64) -> Result<()> {
         self.ensure_control()?;
+        self.cancellations.check(key, epoch)?;
         anyhow::ensure!(
             self.selected_epoch == epoch
                 && !self.provider_invalidated
                 && self.owner.as_ref() == Some(key)
-                && !self.outgoing_path_lost
+                && !self.lost_call_paths.contains(path)
                 && self.registry()?.path_for(key) == Some(path)
                 && self.outgoing_stage.as_ref()
                     == Some(&(
@@ -1950,6 +2146,7 @@ impl ModemManagerVoice {
     }
 
     fn start_owned_audio(&mut self, key: &SessionKey, path: &str) -> Result<()> {
+        self.cancellations.check(key, self.selected_epoch)?;
         self.ensure_prepared_current(key, path)?;
         let audio_port: String = self.proxy_for(path)?.get_property("AudioPort")?;
         self.ensure_control()?;
@@ -2125,6 +2322,7 @@ impl GsmBackend for ModemManagerVoice {
                 "GSM generation change requires resolved sessions"
             );
         }
+        self.cancellations.configure(generation)?;
         self.generation = Some(generation);
         self.registry = Some(crate::gsm_calls::GsmCallRegistry::new(generation));
         self.initial_scan = true;
@@ -2166,6 +2364,7 @@ impl GsmBackend for ModemManagerVoice {
             self.registry()?.tracked().is_empty() && self.cleanup.uncertain.is_empty(),
             "GSM native reconciliation required before dialing"
         );
+        self.cancellations.register(key, epoch)?;
         self.ensure_control()?;
         self.refresh_availability()?;
         anyhow::ensure!(self.cached.available, "{}", self.cached.unavailable_reason);
@@ -2177,11 +2376,17 @@ impl GsmBackend for ModemManagerVoice {
             "number",
             zvariant::OwnedValue::try_from(zvariant::Value::from(number.to_owned()))?,
         )]);
+        let cancellations = self.cancellations.clone();
+        let admission = cancellations
+            .0
+            .lock()
+            .map_err(|_| anyhow::anyhow!("GSM admission lock poisoned"))?;
+        AdmissionCancellations::ensure_current(&admission, key, epoch)?;
         self.owner = Some(key.clone());
         self.uncertain_create = Some(key.clone());
         self.outgoing_stage = Some((key.clone(), OutgoingStage::Creating));
-        self.outgoing_path_lost = false;
         self.idle_calls_proven = false;
+        drop(admission);
         let create = Proxy::new(
             self.connection.as_ref().context("No modem connection")?,
             self.bound_owner()?,
@@ -2226,7 +2431,23 @@ impl GsmBackend for ModemManagerVoice {
             self.audio_deadline = Some(Instant::now() + Duration::from_secs(8));
             self.ensure_created_current(key, path.as_str(), epoch)?;
             self.ensure_prepared_current(key, path.as_str())?;
-            self.ensure_created_current(key, path.as_str(), epoch)
+            self.ensure_created_current(key, path.as_str(), epoch)?;
+            let cancellations = self.cancellations.clone();
+            let admission = cancellations
+                .0
+                .lock()
+                .map_err(|_| anyhow::anyhow!("GSM admission lock poisoned"))?;
+            AdmissionCancellations::ensure_current(&admission, key, epoch)?;
+            // The same lock used by send/enqueue linearizes cancellation with
+            // this sticky dispatch decision; cancellation after it needs proof.
+            self.outgoing_stage = Some((
+                key.clone(),
+                OutgoingStage::StartDispatched {
+                    path: path.to_string(),
+                },
+            ));
+            self.cleanup.failed(path.as_str());
+            Ok(())
         })();
         if let Err(error) = preparation {
             let _ = self.delete_created_unstarted(key);
@@ -2234,13 +2455,6 @@ impl GsmBackend for ModemManagerVoice {
         }
         // Sticky before dispatch: no reply/error/UNKNOWN/CallDeleted can turn
         // this key back into a deletable never-started object.
-        self.outgoing_stage = Some((
-            key.clone(),
-            OutgoingStage::StartDispatched {
-                path: path.to_string(),
-            },
-        ));
-        self.cleanup.failed(path.as_str());
         let result = self
             .proxy_for(path.as_str())?
             .call::<_, _, ()>("Start", &());
@@ -2254,6 +2468,7 @@ impl GsmBackend for ModemManagerVoice {
             "GSM Start response belongs to an old admission"
         );
         self.ensure_prepared_current(key, path.as_str())?;
+        self.cancellations.check(key, epoch)?;
         result?;
         self.cleanup.confirmed(path.as_str());
         Ok(())
@@ -2280,6 +2495,8 @@ impl GsmBackend for ModemManagerVoice {
             diagnostic.observe("session_control", self.ensure_control())?;
             match command.action {
                 CallAction::Answer => {
+                    let epoch = self.selected_epoch;
+                    self.cancellations.register(&command.key, epoch)?;
                     anyhow::ensure!(self.owner.is_none(), "GSM voice already owned");
                     anyhow::ensure!(
                         self.cleanup.uncertain.is_empty()
@@ -2323,10 +2540,17 @@ impl GsmBackend for ModemManagerVoice {
                         "accept_format",
                         self.ensure_prepared_current(&command.key, &path),
                     )?;
-                    let epoch = self.selected_epoch;
+                    let cancellations = self.cancellations.clone();
+                    let admission = cancellations
+                        .0
+                        .lock()
+                        .map_err(|_| anyhow::anyhow!("GSM admission lock poisoned"))?;
+                    AdmissionCancellations::ensure_current(&admission, &command.key, epoch)?;
+                    self.accept_dispatched = Some(command.key.clone());
                     self.cleanup.failed(&path);
-                    let proxy = diagnostic.observe("accept_proxy", self.proxy_for(&path))?;
                     diagnostic.native_accept_dispatched = Some(true);
+                    drop(admission);
+                    let proxy = diagnostic.observe("accept_proxy", self.proxy_for(&path))?;
                     diagnostic.record("native_accept", "dispatch", None);
                     let accept_result = diagnostic.observe(
                         "native_accept",
@@ -2338,6 +2562,7 @@ impl GsmBackend for ModemManagerVoice {
                         epoch == self.selected_epoch && !self.provider_invalidated,
                         "GSM Accept response belongs to an old audio lifetime"
                     );
+                    self.cancellations.check(&command.key, epoch)?;
                     if let Err(error) = accept_result {
                         self.cleanup.failed(&path);
                         return Err(error);
@@ -2387,6 +2612,60 @@ impl GsmBackend for ModemManagerVoice {
 mod tests {
     use super::*;
     use std::sync::{Arc, Mutex};
+
+    #[test]
+    fn gsm_outgoing_cancellation_lifetime_is_bounded_without_reviving_retired_or_older_live_keys() {
+        let latch = AdmissionCancellations::default();
+        latch.configure(9).unwrap();
+        let key = |serial| SessionKey {
+            transport: yoyopod_protocol::call::CallTransport::Gsm,
+            generation: 9,
+            call_id: format!("runtime-outgoing-{serial}"),
+        };
+        let older = key(1);
+        latch.register(&older, 3).unwrap();
+        for serial in 2..2048 {
+            let current = key(serial);
+            latch.register(&current, 3).unwrap();
+            latch.cancel(&current).unwrap();
+            assert!(latch.check(&current, 3).is_err());
+            latch.retire(&current).unwrap();
+            assert!(latch.register(&current, 3).is_err());
+            latch.cancel(&key(10_000 + serial)).unwrap();
+            assert_eq!(latch.0.lock().unwrap().entries.len(), 1);
+            latch.check(&older, 3).unwrap();
+        }
+        for serial in 2048..2048 + yoyopod_protocol::call::MAX_LIVE_CALLS as u64 - 1 {
+            latch.register(&key(serial), 3).unwrap();
+        }
+        assert!(latch.register(&key(9000), 3).is_err());
+        assert_eq!(
+            latch.0.lock().unwrap().entries.len(),
+            yoyopod_protocol::call::MAX_LIVE_CALLS
+        );
+        assert!(latch.configure(10).is_err());
+        let outstanding: Vec<_> = latch
+            .0
+            .lock()
+            .unwrap()
+            .entries
+            .iter()
+            .map(|(key, _, _)| key.clone())
+            .collect();
+        for key in outstanding {
+            latch.retire(&key).unwrap();
+        }
+        latch.configure(10).unwrap();
+        let fresh = SessionKey {
+            generation: 10,
+            ..older.clone()
+        };
+        latch.register(&fresh, 4).unwrap();
+        latch.cancel(&older).unwrap();
+        latch.retire(&older).unwrap();
+        latch.check(&fresh, 4).unwrap();
+        assert_eq!(latch.0.lock().unwrap().entries.len(), 1);
+    }
 
     struct PrivateBus {
         daemon: std::process::Child,
@@ -2905,6 +3184,36 @@ mod tests {
 
     const TEST_OUTGOING_CALL: &str = "/org/freedesktop/ModemManager1/Call/99";
 
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    enum ControlBoundary {
+        Create,
+        Prepare,
+        Start,
+        Accept,
+    }
+
+    async fn wait_native_boundary(gate: &PropertyGate) -> zbus::fdo::Result<()> {
+        let held = gate.lock().unwrap().take();
+        if let Some((entered, release)) = held {
+            entered.send(()).unwrap();
+            let deadline = Instant::now() + Duration::from_secs(3);
+            loop {
+                match release.try_recv() {
+                    Ok(()) => break,
+                    Err(mpsc::TryRecvError::Empty) if Instant::now() < deadline => {
+                        async_io::Timer::after(Duration::from_millis(5)).await;
+                    }
+                    _ => {
+                        return Err(zbus::fdo::Error::Failed(
+                            "synthetic native boundary expired".into(),
+                        ))
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
     #[derive(Default)]
     struct OutgoingEffects {
         trace: Mutex<Vec<String>>,
@@ -2912,6 +3221,7 @@ mod tests {
         created: std::sync::atomic::AtomicBool,
         format_seen: std::sync::atomic::AtomicBool,
         state: std::sync::atomic::AtomicI32,
+        direction: std::sync::atomic::AtomicI32,
         rate: std::sync::atomic::AtomicU32,
         starts: std::sync::atomic::AtomicUsize,
         accepts: std::sync::atomic::AtomicUsize,
@@ -2920,7 +3230,14 @@ mod tests {
         fail_delete: std::sync::atomic::AtomicBool,
         fail_prepare: std::sync::atomic::AtomicBool,
         fail_create: std::sync::atomic::AtomicBool,
+        fail_start: std::sync::atomic::AtomicBool,
+        fail_hangup: std::sync::atomic::AtomicBool,
+        empty_port: std::sync::atomic::AtomicBool,
         state_gate: PropertyGate,
+        create_gate: PropertyGate,
+        prepare_gate: PropertyGate,
+        start_gate: PropertyGate,
+        accept_gate: PropertyGate,
     }
     impl OutgoingEffects {
         fn record(&self, effect: &str) {
@@ -2938,7 +3255,7 @@ mod tests {
         fn calls(&self) -> Vec<OwnedObjectPath> {
             self.0.paths.lock().unwrap().clone()
         }
-        fn create_call(
+        async fn create_call(
             &self,
             properties: HashMap<String, zvariant::OwnedValue>,
         ) -> zbus::fdo::Result<OwnedObjectPath> {
@@ -2957,6 +3274,7 @@ mod tests {
             self.0.created.store(true, Ordering::SeqCst);
             let path = OwnedObjectPath::try_from(TEST_OUTGOING_CALL).unwrap();
             self.0.paths.lock().unwrap().push(path.clone());
+            wait_native_boundary(&self.0.create_gate).await?;
             Ok(path)
         }
         fn delete_call(&self, path: OwnedObjectPath) -> zbus::fdo::Result<()> {
@@ -3011,7 +3329,7 @@ mod tests {
         }
         #[zbus(property)]
         fn direction(&self) -> i32 {
-            2
+            self.0.direction.load(Ordering::SeqCst)
         }
         #[zbus(property)]
         fn number(&self) -> &str {
@@ -3036,19 +3354,38 @@ mod tests {
         }
         #[zbus(property)]
         fn audio_port(&self) -> &str {
-            "/dev/null"
+            if self.0.empty_port.load(Ordering::SeqCst) {
+                ""
+            } else {
+                "/dev/null"
+            }
         }
-        fn start(&self) {
+        async fn start(&self) -> zbus::fdo::Result<()> {
             self.0.record("start");
             self.0.starts.fetch_add(1, Ordering::SeqCst);
             self.0.state.store(1, Ordering::SeqCst);
+            wait_native_boundary(&self.0.start_gate).await?;
+            if self.0.fail_start.load(Ordering::SeqCst) {
+                return Err(zbus::fdo::Error::Failed(
+                    "synthetic uncertain Start failure".into(),
+                ));
+            }
+            Ok(())
         }
-        fn accept(&self) {
+        async fn accept(&self) -> zbus::fdo::Result<()> {
             self.0.accepts.fetch_add(1, Ordering::SeqCst);
+            self.0.state.store(4, Ordering::SeqCst);
+            wait_native_boundary(&self.0.accept_gate).await
         }
-        fn hangup(&self) {
+        fn hangup(&self) -> zbus::fdo::Result<()> {
             self.0.hangups.fetch_add(1, Ordering::SeqCst);
+            if self.0.fail_hangup.load(Ordering::SeqCst) {
+                return Err(zbus::fdo::Error::Failed(
+                    "synthetic uncertain Hangup failure".into(),
+                ));
+            }
             self.0.state.store(7, Ordering::SeqCst);
+            Ok(())
         }
     }
     struct FakePcmEngine(Arc<OutgoingEffects>);
@@ -3061,6 +3398,11 @@ mod tests {
         fn prepare(&self, format: &VerifiedPcm) -> Result<Box<dyn PreparedPcm>> {
             assert_eq!(format.sample_rate_hz(), 16000);
             self.0.record("prepare");
+            let held = self.0.prepare_gate.lock().unwrap().take();
+            if let Some((entered, release)) = held {
+                entered.send(()).unwrap();
+                release.recv_timeout(Duration::from_secs(3))?;
+            }
             anyhow::ensure!(
                 !self.0.fail_prepare.load(Ordering::SeqCst),
                 "synthetic preparation failure"
@@ -3109,6 +3451,7 @@ mod tests {
             let owner = bus.connection();
             let effects = Arc::new(OutgoingEffects::default());
             effects.rate.store(16000, Ordering::SeqCst);
+            effects.direction.store(2, Ordering::SeqCst);
             owner
                 .object_server()
                 .at("/org/freedesktop/ModemManager1", zbus::fdo::ObjectManager)
@@ -3173,6 +3516,76 @@ mod tests {
                     matches!(stage, OutgoingStage::StartDispatched { .. }).then(|| key.clone())
                 })
         }
+        fn incoming_key(&mut self) -> SessionKey {
+            self.effects.direction.store(1, Ordering::SeqCst);
+            self.effects.state.store(3, Ordering::SeqCst);
+            self.effects
+                .paths
+                .lock()
+                .unwrap()
+                .push(OwnedObjectPath::try_from(TEST_OUTGOING_CALL).unwrap());
+            self.backend.reconcile_paths().unwrap();
+            self.backend.registry().unwrap().tracked()[0].1.clone()
+        }
+        fn hold_boundary(&self, boundary: ControlBoundary) -> (Receiver<()>, Sender<()>) {
+            let gate = match boundary {
+                ControlBoundary::Create => &self.effects.create_gate,
+                ControlBoundary::Prepare => &self.effects.prepare_gate,
+                ControlBoundary::Start => &self.effects.start_gate,
+                ControlBoundary::Accept => &self.effects.accept_gate,
+            };
+            let (entered, held) = mpsc::channel();
+            let (release, released) = mpsc::channel();
+            *gate.lock().unwrap() = Some((entered, released));
+            (held, release)
+        }
+    }
+
+    fn outgoing_same_path_reset(owner: &Connection, effects: &OutgoingEffects) {
+        owner
+            .emit_signal(
+                None::<&str>,
+                TEST_MODEM0,
+                MODEM_INTERFACE,
+                "StateChanged",
+                &(8i32, 4i32, 0u32),
+            )
+            .unwrap();
+        effects.rate.store(0, Ordering::SeqCst);
+        lifecycle_properties(
+            owner,
+            TEST_OUTGOING_CALL,
+            CALL_INTERFACE,
+            HashMap::new(),
+            vec!["AudioFormat"],
+        );
+        owner
+            .emit_signal(
+                None::<&str>,
+                TEST_MODEM0,
+                MODEM_INTERFACE,
+                "StateChanged",
+                &(4i32, 8i32, 0u32),
+            )
+            .unwrap();
+        effects.rate.store(16000, Ordering::SeqCst);
+        // The actual metadata getter remains restored on the exported Call;
+        // this signal carries the same qualified typed dictionary explicitly.
+        lifecycle_properties(
+            owner,
+            TEST_OUTGOING_CALL,
+            CALL_INTERFACE,
+            HashMap::from([(
+                "AudioFormat",
+                zvariant::OwnedValue::try_from(zvariant::Value::from(HashMap::from([
+                    ("encoding", zvariant::Value::from("pcm")),
+                    ("resolution", zvariant::Value::from("s16le")),
+                    ("rate", zvariant::Value::from(16000u32)),
+                ])))
+                .unwrap(),
+            )]),
+            vec![],
+        );
     }
 
     #[test]
@@ -3275,13 +3688,26 @@ mod tests {
 
     #[test]
     fn gsm_outgoing_cleanup_rechecks_identity_after_held_state_reply_and_path_reuse() {
-        for unstarted in [false, true] {
+        for case in 0..3 {
             let mut fixture = OutgoingFixture::new_qualified();
-            let key = fixture.key();
+            let unstarted = case == 1;
+            let key = if case == 2 {
+                fixture.incoming_key()
+            } else {
+                fixture.key()
+            };
             if unstarted {
                 fixture.effects.rate.store(0, Ordering::SeqCst);
                 fixture.effects.fail_delete.store(true, Ordering::SeqCst);
                 assert!(fixture.dial(&key, "+49123456789").is_err());
+            } else if case == 2 {
+                fixture
+                    .backend
+                    .apply_call(&CallCommand {
+                        key: key.clone(),
+                        action: yoyopod_protocol::call::CallAction::Answer,
+                    })
+                    .unwrap();
             } else {
                 fixture.dial(&key, "+49123456789").unwrap();
             }
@@ -3350,7 +3776,7 @@ mod tests {
             release.send(()).unwrap();
             let (mut backend, result) = request.join().unwrap();
             assert!(result.is_err());
-            assert!(backend.outgoing_path_lost);
+            assert!(backend.lost_call_paths.contains(TEST_OUTGOING_CALL));
             assert_eq!(effects.hangups.load(Ordering::SeqCst), 0);
             assert_eq!(effects.deletes.lock().unwrap().len(), before_deletes);
             assert!(backend.owns_voice(&key));
@@ -3367,6 +3793,16 @@ mod tests {
                     .as_str(),
                 collector
             );
+            if case == 2 {
+                effects.paths.lock().unwrap().clear();
+                backend.reconcile_paths().unwrap();
+                assert!(
+                    backend.owns_voice(&key),
+                    "uncertain Accept released on CallDeleted/absence"
+                );
+                assert_eq!(backend.accept_dispatched.as_ref(), Some(&key));
+                assert!(backend.drain_call_events().iter().all(|e| !matches!(e,CallManagerWireEvent::Update(u) if u.key==key && u.phase==CallPhase::Ended)));
+            }
         }
     }
 
@@ -3410,6 +3846,870 @@ mod tests {
                 .native_calls_quiescent
         );
         assert!(fixture.backend.drain_call_events().iter().all(|e| !matches!(e,CallManagerWireEvent::Update(u) if u.key==key && u.phase==CallPhase::Ended)));
+    }
+
+    #[test]
+    fn gsm_outgoing_held_native_boundaries_fence_old_intent_and_retain_actual_worker_data_lease() {
+        use crate::protocol::WorkerEnvelope;
+        use yoyopod_protocol::call::CallAction;
+        for boundary in [
+            ControlBoundary::Create,
+            ControlBoundary::Prepare,
+            ControlBoundary::Start,
+            ControlBoundary::Accept,
+        ] {
+            let mut fixture = OutgoingFixture::new_qualified();
+            let key = if boundary == ControlBoundary::Accept {
+                fixture.incoming_key()
+            } else {
+                fixture.key()
+            };
+            let sessions = fixture
+                .backend
+                .registry()
+                .unwrap()
+                .latest(&key)
+                .cloned()
+                .into_iter()
+                .collect();
+            let epoch = fixture.backend.selected_modem_epoch();
+            let native_owner = fixture.backend.reconciliation().unwrap().native_owner;
+            fixture.effects.fail_delete.store(true, Ordering::SeqCst);
+            fixture.effects.fail_hangup.store(true, Ordering::SeqCst);
+            let (held, release) = fixture.hold_boundary(boundary);
+            let OutgoingFixture {
+                backend,
+                owner,
+                effects,
+                _bus,
+            } = fixture;
+            let gsm = GsmWorker::with_modem_backend(backend);
+            let envelope = if boundary == ControlBoundary::Accept {
+                WorkerEnvelope::command(
+                    "call.action",
+                    Some("boundary".into()),
+                    serde_json::json!({"key":key,"action":"answer","admission_epoch":epoch}),
+                )
+            } else {
+                WorkerEnvelope::command(
+                    "call.dial",
+                    Some("boundary".into()),
+                    serde_json::json!({"key":key,"address":"+49123456789","admission_epoch":epoch}),
+                )
+            };
+            let events = crate::worker::tests::assert_gsm_outgoing_uncertain_lease(
+                &gsm,
+                &key,
+                sessions,
+                envelope,
+                &["boundary", "queued-old-dial", "queued-old-answer"],
+                crate::worker::tests::GsmLeaseOutcome::Uncertain,
+                |gsm, _| {
+                    held.recv_timeout(Duration::from_secs(3)).unwrap();
+                    gsm.send_at_epoch(
+                        GsmCommand::DialSession {
+                            request_id: "queued-old-dial".into(),
+                            key: key.clone(),
+                            number: "+49123456789".into(),
+                        },
+                        epoch,
+                    )
+                    .unwrap();
+                    gsm.send_at_epoch(
+                        GsmCommand::Action {
+                            request_id: "queued-old-answer".into(),
+                            command: CallCommand {
+                                key: key.clone(),
+                                action: CallAction::Answer,
+                            },
+                        },
+                        epoch,
+                    )
+                    .unwrap();
+                    outgoing_same_path_reset(&owner, &effects);
+                    if matches!(boundary, ControlBoundary::Start | ControlBoundary::Accept) {
+                        // A pending native operation can later report UNKNOWN;
+                        // this cannot turn dispatch uncertainty into deletion.
+                        effects.state.store(0, Ordering::SeqCst);
+                    }
+                    release.send(()).unwrap();
+                },
+            );
+            for request in ["queued-old-dial", "queued-old-answer"] {
+                let completed = events
+                    .iter()
+                    .find(|e| e.request_id.as_deref() == Some(request))
+                    .unwrap();
+                assert!(
+                    completed.payload["error"]
+                        .as_str()
+                        .unwrap()
+                        .contains("command fenced"),
+                    "{boundary:?}: {completed:?}"
+                );
+            }
+            assert!(events.iter().all(|e| e.message_type != "call.update"
+                || e.payload["key"] != serde_json::json!(key)
+                || e.payload["phase"] != "active"));
+            assert!(events
+                .iter()
+                .filter(|e| e.message_type == "call.reconciled")
+                .all(|e| e.payload["native_owner"] == serde_json::json!(native_owner)));
+            assert_eq!(
+                effects.starts.load(Ordering::SeqCst),
+                usize::from(boundary == ControlBoundary::Start)
+            );
+            assert_eq!(
+                effects.accepts.load(Ordering::SeqCst),
+                usize::from(boundary == ControlBoundary::Accept)
+            );
+            let trace = effects.trace.lock().unwrap().clone();
+            assert!(!trace.iter().any(|entry| entry == "pcm_start"));
+            if boundary != ControlBoundary::Create {
+                assert!(
+                    trace.iter().any(|entry| entry == "pcm_join"),
+                    "{boundary:?}: {trace:?}"
+                );
+            }
+            if matches!(boundary, ControlBoundary::Start | ControlBoundary::Accept) {
+                assert!(
+                    effects.deletes.lock().unwrap().is_empty(),
+                    "uncertain dispatch used DeleteCall as native termination"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn gsm_outgoing_pending_provider_and_preparation_failure_never_dispatch_native_start_or_accept()
+    {
+        use yoyopod_protocol::call::CallAction;
+        for incoming in [false, true] {
+            let mut fixture = OutgoingFixture::new_qualified();
+            let key = if incoming {
+                fixture.incoming_key()
+            } else {
+                fixture.key()
+            };
+            fixture.backend.provider = crate::gsm_provider::ProviderGate::default();
+            let result = if incoming {
+                fixture.backend.apply_call(&CallCommand {
+                    key,
+                    action: CallAction::Answer,
+                })
+            } else {
+                fixture.dial(&key, "+49123456789")
+            };
+            assert!(result.is_err());
+            assert_eq!(fixture.native_dial_count(), 0);
+            assert_eq!(fixture.effects.accepts.load(Ordering::SeqCst), 0);
+            assert!(!fixture
+                .trace()
+                .iter()
+                .any(|e| matches!(e.as_str(), "create" | "prepare" | "pcm_start")));
+        }
+        let mut fixture = OutgoingFixture::new_qualified();
+        let key = fixture.key();
+        fixture.effects.fail_prepare.store(true, Ordering::SeqCst);
+        assert!(fixture.dial(&key, "+49123456789").is_err());
+        assert_eq!(fixture.trace(), ["create", "format", "prepare", "delete"]);
+        assert_eq!(fixture.native_dial_count(), 0);
+        assert_eq!(fixture.effects.hangups.load(Ordering::SeqCst), 0);
+        assert!(!fixture.backend.owns_voice(&key));
+    }
+
+    #[test]
+    fn gsm_outgoing_active_port_wait_is_bounded_and_prepared_pcm_joins_before_ended() {
+        let mut fixture = OutgoingFixture::new_qualified();
+        let key = fixture.key();
+        fixture.dial(&key, "+49123456789").unwrap();
+        fixture.effects.state.store(4, Ordering::SeqCst);
+        fixture.effects.empty_port.store(true, Ordering::SeqCst);
+        fixture.backend.drain_call_events();
+        fixture.backend.observe_path(TEST_OUTGOING_CALL).unwrap();
+        assert!(fixture.backend.audio.is_none());
+        assert!(fixture.backend.prepared_audio.is_some());
+        assert!(fixture
+            .backend
+            .drain_call_events()
+            .iter()
+            .all(|e| !matches!(e,CallManagerWireEvent::Update(u) if u.phase==CallPhase::Active)));
+        fixture.backend.audio_deadline = Some(Instant::now());
+        fixture.backend.observe_path(TEST_OUTGOING_CALL).unwrap();
+        assert!(fixture.backend.audio.is_none() && fixture.backend.prepared_audio.is_none());
+        assert!(fixture.backend.owns_voice(&key));
+        assert_eq!(fixture.effects.hangups.load(Ordering::SeqCst), 1);
+        assert_eq!(fixture.trace().last().map(String::as_str), Some("pcm_join"));
+        fixture.backend.observe_path(TEST_OUTGOING_CALL).unwrap();
+        assert!(fixture.backend.drain_call_events().iter().any(|e| matches!(e,CallManagerWireEvent::Update(u) if u.key==key && u.phase==CallPhase::Ended)));
+        assert!(!fixture.backend.owns_voice(&key));
+    }
+
+    #[test]
+    fn gsm_outgoing_first_ready_port_observation_publishes_active_without_a_duration_tick() {
+        let mut fixture = OutgoingFixture::new_qualified();
+        let key = fixture.key();
+        fixture.dial(&key, "+49123456789").unwrap();
+        fixture.effects.state.store(4, Ordering::SeqCst);
+        fixture.effects.empty_port.store(true, Ordering::SeqCst);
+        fixture.backend.drain_call_events();
+        fixture.backend.observe_path(TEST_OUTGOING_CALL).unwrap();
+        assert!(fixture.backend.audio.is_none());
+        assert_eq!(
+            fixture
+                .backend
+                .registry()
+                .unwrap()
+                .latest(&key)
+                .unwrap()
+                .phase,
+            CallPhase::Preparing
+        );
+        assert!(fixture
+            .backend
+            .drain_call_events()
+            .iter()
+            .all(|e| !matches!(e,CallManagerWireEvent::Update(u) if u.phase==CallPhase::Active)));
+        fixture.effects.empty_port.store(false, Ordering::SeqCst);
+        fixture.backend.observe_path(TEST_OUTGOING_CALL).unwrap();
+        assert!(fixture.backend.audio.is_some());
+        let events = fixture.backend.drain_call_events();
+        assert_eq!(events.iter().filter(|e| matches!(e,CallManagerWireEvent::Update(u) if u.key==key && u.phase==CallPhase::Active && u.duration_seconds==0)).count(), 1);
+        assert_eq!(
+            fixture
+                .trace()
+                .iter()
+                .filter(|e| e.as_str() == "pcm_start")
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn gsm_outgoing_validated_cancel_during_prepare_fences_dispatch_and_joins_before_keyed_data_release(
+    ) {
+        use crate::protocol::WorkerEnvelope;
+        use crate::worker::tests::GsmLeaseOutcome;
+        for incoming in [false, true] {
+            let mut fixture = OutgoingFixture::new_qualified();
+            let key = if incoming {
+                fixture.incoming_key()
+            } else {
+                fixture.key()
+            };
+            let sessions = fixture
+                .backend
+                .registry()
+                .unwrap()
+                .latest(&key)
+                .cloned()
+                .into_iter()
+                .collect();
+            if incoming {
+                fixture.effects.fail_hangup.store(true, Ordering::SeqCst);
+            }
+            let epoch = fixture.backend.selected_modem_epoch();
+            let (held, release) = fixture.hold_boundary(ControlBoundary::Prepare);
+            let OutgoingFixture {
+                backend,
+                owner: _owner,
+                effects,
+                _bus,
+            } = fixture;
+            let gsm = GsmWorker::with_modem_backend(backend);
+            let envelope = if incoming {
+                WorkerEnvelope::command(
+                    "call.action",
+                    Some("cancelled-admission".into()),
+                    serde_json::json!({"key":key,"action":"answer","admission_epoch":epoch}),
+                )
+            } else {
+                WorkerEnvelope::command(
+                    "call.dial",
+                    Some("cancelled-admission".into()),
+                    serde_json::json!({"key":key,"address":"+49123456789","admission_epoch":epoch}),
+                )
+            };
+            crate::worker::tests::assert_gsm_outgoing_uncertain_lease(
+                &gsm,
+                &key,
+                sessions,
+                envelope,
+                &["cancelled-admission", "runtime-cancel"],
+                if incoming {
+                    GsmLeaseOutcome::Uncertain
+                } else {
+                    GsmLeaseOutcome::ReleasedCancellation
+                },
+                |_, send| {
+                    held.recv_timeout(Duration::from_secs(3)).unwrap();
+                    send(&WorkerEnvelope::command(
+                        "call.action",
+                        Some("runtime-cancel".into()),
+                        serde_json::json!({"key":key,"action":{"reject":"cancelled"}}),
+                    ))
+                    .unwrap();
+                    release.send(()).unwrap();
+                },
+            );
+            assert_eq!(effects.starts.load(Ordering::SeqCst), 0);
+            assert_eq!(effects.accepts.load(Ordering::SeqCst), 0);
+            let trace = effects.trace.lock().unwrap().clone();
+            assert!(trace.iter().any(|e| e == "pcm_join"));
+            if !incoming {
+                assert_eq!(*effects.deletes.lock().unwrap(), [TEST_OUTGOING_CALL]);
+                assert!(
+                    trace.iter().position(|e| e == "pcm_join").unwrap()
+                        < trace.iter().position(|e| e == "delete").unwrap()
+                );
+                assert_eq!(effects.hangups.load(Ordering::SeqCst), 0);
+                let fresh = SessionKey {
+                    call_id: "runtime-outgoing-2".into(),
+                    ..key.clone()
+                };
+                let epoch = gsm.admission_epoch();
+                crate::worker::tests::assert_gsm_outgoing_uncertain_lease(
+                    &gsm,
+                    &fresh,
+                    vec![],
+                    WorkerEnvelope::command(
+                        "call.dial",
+                        Some("fresh-after-clean-cancel".into()),
+                        serde_json::json!({"key":fresh,"address":"+49123456789","admission_epoch":epoch}),
+                    ),
+                    &["fresh-after-clean-cancel", "late-old-cancel"],
+                    GsmLeaseOutcome::OwnedSuccess,
+                    |_, send| {
+                        send(&WorkerEnvelope::command(
+                            "call.action",
+                            Some("late-old-cancel".into()),
+                            serde_json::json!({"key":key,"action":"hangup"}),
+                        ))
+                        .unwrap();
+                    },
+                );
+                assert_eq!(effects.starts.load(Ordering::SeqCst), 1);
+                assert_eq!(*effects.deletes.lock().unwrap(), [TEST_OUTGOING_CALL]);
+                assert!(gsm
+                    .send_at_epoch(
+                        GsmCommand::DialSession {
+                            request_id: "retired-replay".into(),
+                            key: key.clone(),
+                            number: "+49123456789".into()
+                        },
+                        epoch
+                    )
+                    .is_err());
+            }
+        }
+    }
+
+    #[test]
+    fn gsm_outgoing_cancel_before_backend_create_is_sticky_and_wrong_key_cancel_preserves_primary()
+    {
+        use crate::protocol::WorkerEnvelope;
+        use crate::worker::tests::GsmLeaseOutcome;
+        for wrong_key in [false, true] {
+            let fixture = OutgoingFixture::new_qualified();
+            let key = fixture.key();
+            let epoch = fixture.backend.selected_modem_epoch();
+            let (held, release) = if wrong_key {
+                fixture.hold_boundary(ControlBoundary::Prepare)
+            } else {
+                let (entered, held) = mpsc::channel();
+                let (release, released) = mpsc::channel();
+                *fixture
+                    .backend
+                    .signals
+                    .as_ref()
+                    .unwrap()
+                    .pause_before_forward
+                    .lock()
+                    .unwrap() = Some((entered, released));
+                fixture
+                    .owner
+                    .emit_signal(
+                        None::<&str>,
+                        TEST_MODEM0,
+                        MODEM_INTERFACE,
+                        "StateChanged",
+                        &(8i32, 8i32, 0u32),
+                    )
+                    .unwrap();
+                (held, release)
+            };
+            let OutgoingFixture {
+                backend,
+                owner: _owner,
+                effects,
+                _bus,
+            } = fixture;
+            let gsm = GsmWorker::with_modem_backend(backend);
+            let cancelled_key = if wrong_key {
+                SessionKey {
+                    call_id: "runtime-outgoing-2".into(),
+                    ..key.clone()
+                }
+            } else {
+                key.clone()
+            };
+            crate::worker::tests::assert_gsm_outgoing_uncertain_lease(
+                &gsm,
+                &key,
+                vec![],
+                WorkerEnvelope::command(
+                    "call.dial",
+                    Some("admission".into()),
+                    serde_json::json!({"key":key,"address":"+49123456789","admission_epoch":epoch}),
+                ),
+                &["admission", "runtime-cancel"],
+                if wrong_key {
+                    GsmLeaseOutcome::OwnedSuccess
+                } else {
+                    GsmLeaseOutcome::ReleasedCancellation
+                },
+                |_, send| {
+                    held.recv_timeout(Duration::from_secs(3)).unwrap();
+                    send(&WorkerEnvelope::command(
+                        "call.action",
+                        Some("runtime-cancel".into()),
+                        serde_json::json!({"key":cancelled_key,"action":"hangup"}),
+                    ))
+                    .unwrap();
+                    release.send(()).unwrap();
+                },
+            );
+            assert_eq!(
+                effects.starts.load(Ordering::SeqCst),
+                usize::from(wrong_key)
+            );
+            assert_eq!(
+                effects
+                    .trace
+                    .lock()
+                    .unwrap()
+                    .iter()
+                    .filter(|e| e.as_str() == "create")
+                    .count(),
+                usize::from(wrong_key)
+            );
+        }
+    }
+
+    #[test]
+    fn gsm_outgoing_incoming_held_accept_path_reuse_and_absence_retain_exact_uncertain_key() {
+        let mut fixture = OutgoingFixture::new_qualified();
+        let key = fixture.incoming_key();
+        let (held, release) = fixture.hold_boundary(ControlBoundary::Accept);
+        let collector = fixture
+            .backend
+            .signals
+            .as_ref()
+            .unwrap()
+            .connection
+            .unique_name()
+            .unwrap()
+            .to_string();
+        let OutgoingFixture {
+            mut backend,
+            owner,
+            effects,
+            _bus,
+        } = fixture;
+        let old_key = key.clone();
+        let request = thread::spawn(move || {
+            let result = backend.apply_call(&CallCommand {
+                key: old_key,
+                action: yoyopod_protocol::call::CallAction::Answer,
+            });
+            (backend, result)
+        });
+        held.recv_timeout(Duration::from_secs(3)).unwrap();
+        owner
+            .emit_signal(
+                None::<&str>,
+                TEST_MODEM0,
+                VOICE_INTERFACE,
+                "CallDeleted",
+                &(OwnedObjectPath::try_from(TEST_OUTGOING_CALL).unwrap(),),
+            )
+            .unwrap();
+        owner
+            .emit_signal(
+                None::<&str>,
+                "/org/freedesktop/ModemManager1",
+                "org.freedesktop.DBus.ObjectManager",
+                "InterfacesRemoved",
+                &(
+                    OwnedObjectPath::try_from(TEST_OUTGOING_CALL).unwrap(),
+                    vec![CALL_INTERFACE],
+                ),
+            )
+            .unwrap();
+        effects.state.store(3, Ordering::SeqCst);
+        owner
+            .emit_signal(
+                None::<&str>,
+                TEST_MODEM0,
+                VOICE_INTERFACE,
+                "CallAdded",
+                &(OwnedObjectPath::try_from(TEST_OUTGOING_CALL).unwrap(),),
+            )
+            .unwrap();
+        release.send(()).unwrap();
+        let (mut backend, result) = request.join().unwrap();
+        assert!(result.is_err());
+        assert!(backend.lost_call_paths.contains(TEST_OUTGOING_CALL));
+        assert!(backend.targeted_hangup(&key).is_err());
+        effects.paths.lock().unwrap().clear();
+        backend.reconcile_paths().unwrap();
+        assert!(backend.owns_voice(&key));
+        assert_eq!(backend.accept_dispatched.as_ref(), Some(&key));
+        assert_eq!(effects.hangups.load(Ordering::SeqCst), 0);
+        assert!(effects.deletes.lock().unwrap().is_empty());
+        assert!(backend.audio.is_none() && backend.prepared_audio.is_none());
+        assert!(effects
+            .trace
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|e| e == "pcm_join"));
+        assert!(backend.drain_call_events().iter().all(|e| !matches!(e,CallManagerWireEvent::Update(u) if u.key==key && matches!(u.phase,CallPhase::Active|CallPhase::Ended))));
+        assert_eq!(
+            backend
+                .signals
+                .as_ref()
+                .unwrap()
+                .connection
+                .unique_name()
+                .unwrap()
+                .as_str(),
+            collector
+        );
+    }
+
+    #[test]
+    fn gsm_outgoing_successful_hangup_cannot_borrow_readded_primary_or_secondary_terminal_state() {
+        const SECONDARY: &str = "/org/freedesktop/ModemManager1/Call/100";
+        for secondary_target in [false, true] {
+            let mut fixture = OutgoingFixture::new_qualified();
+            let primary = fixture.key();
+            fixture.dial(&primary, "+49123456789").unwrap();
+            let (path, effects, key) = if secondary_target {
+                let effects = Arc::new(OutgoingEffects::default());
+                effects.state.store(3, Ordering::SeqCst);
+                effects.direction.store(1, Ordering::SeqCst);
+                effects.rate.store(16000, Ordering::SeqCst);
+                fixture
+                    .owner
+                    .object_server()
+                    .at(SECONDARY, OutgoingCall(effects.clone()))
+                    .unwrap();
+                fixture
+                    .effects
+                    .paths
+                    .lock()
+                    .unwrap()
+                    .push(OwnedObjectPath::try_from(SECONDARY).unwrap());
+                fixture.backend.reconcile_paths().unwrap();
+                let key = fixture
+                    .backend
+                    .registry()
+                    .unwrap()
+                    .tracked()
+                    .into_iter()
+                    .find(|(path, _)| path == SECONDARY)
+                    .unwrap()
+                    .1;
+                (SECONDARY, effects, key)
+            } else {
+                (TEST_OUTGOING_CALL, fixture.effects.clone(), primary.clone())
+            };
+            let epoch = fixture.backend.selected_modem_epoch();
+            fixture.backend.targeted_hangup(&key).unwrap();
+            assert_eq!(effects.hangups.load(Ordering::SeqCst), 1);
+            fixture.backend.drain_call_events();
+            fixture
+                .owner
+                .emit_signal(
+                    None::<&str>,
+                    TEST_MODEM0,
+                    VOICE_INTERFACE,
+                    "CallDeleted",
+                    &(OwnedObjectPath::try_from(path).unwrap(),),
+                )
+                .unwrap();
+            fixture
+                .owner
+                .emit_signal(
+                    None::<&str>,
+                    "/org/freedesktop/ModemManager1",
+                    "org.freedesktop.DBus.ObjectManager",
+                    "InterfacesRemoved",
+                    &(
+                        OwnedObjectPath::try_from(path).unwrap(),
+                        vec![CALL_INTERFACE],
+                    ),
+                )
+                .unwrap();
+            // The replacement is already terminal. Neither this state nor its
+            // reused address is proof about the acknowledged old native ID.
+            effects.state.store(7, Ordering::SeqCst);
+            fixture
+                .owner
+                .emit_signal(
+                    None::<&str>,
+                    TEST_MODEM0,
+                    VOICE_INTERFACE,
+                    "CallAdded",
+                    &(OwnedObjectPath::try_from(path).unwrap(),),
+                )
+                .unwrap();
+            assert!(fixture.backend.targeted_hangup(&key).is_err());
+            fixture.backend.reconcile_paths().unwrap();
+            assert_eq!(effects.hangups.load(Ordering::SeqCst), 1);
+            assert!(fixture.effects.deletes.lock().unwrap().is_empty());
+            assert_eq!(
+                fixture.backend.registry().unwrap().path_for(&key),
+                Some(path)
+            );
+            assert!(fixture.backend.drain_call_events().iter().all(|event| !matches!(event,CallManagerWireEvent::Update(u) if u.key==key && u.phase==CallPhase::Ended)));
+            assert!(fixture.backend.lost_call_paths.contains(path));
+            if secondary_target {
+                assert_eq!(fixture.backend.selected_modem_epoch(), epoch);
+                assert!(fixture.backend.owns_voice(&primary));
+                assert!(fixture.backend.prepared_audio.is_some());
+            } else {
+                assert!(fixture.backend.owns_voice(&key));
+            }
+            fixture
+                .effects
+                .paths
+                .lock()
+                .unwrap()
+                .retain(|candidate| candidate.as_str() != path);
+            fixture.backend.reconcile_paths().unwrap();
+            assert_eq!(fixture.backend.registry().unwrap().path_for(&key), None);
+            assert!(!fixture
+                .backend
+                .confirmed_hangups
+                .iter()
+                .any(|(candidate, _)| candidate == &key));
+            assert!(!fixture.backend.lost_call_paths.contains(path));
+            assert!(fixture.backend.drain_call_events().iter().any(|event| matches!(event,CallManagerWireEvent::Update(u) if u.key==key && u.phase==CallPhase::Ended)));
+        }
+    }
+
+    #[test]
+    fn gsm_outgoing_successful_hangup_removed_then_fresh_absence_releases_joined_key() {
+        let mut fixture = OutgoingFixture::new_qualified();
+        let key = fixture.key();
+        fixture.dial(&key, "+49123456789").unwrap();
+        fixture.backend.targeted_hangup(&key).unwrap();
+        assert_eq!(fixture.trace().last().map(String::as_str), Some("pcm_join"));
+        fixture.backend.drain_call_events();
+        fixture
+            .owner
+            .emit_signal(
+                None::<&str>,
+                TEST_MODEM0,
+                VOICE_INTERFACE,
+                "CallDeleted",
+                &(OwnedObjectPath::try_from(TEST_OUTGOING_CALL).unwrap(),),
+            )
+            .unwrap();
+        fixture.effects.paths.lock().unwrap().clear();
+        fixture.backend.reconcile_paths().unwrap();
+        assert!(!fixture.backend.owns_voice(&key));
+        assert!(fixture.backend.confirmed_hangups.is_empty());
+        assert!(fixture
+            .backend
+            .cancellations
+            .0
+            .lock()
+            .unwrap()
+            .entries
+            .is_empty());
+        assert!(fixture.backend.registry().unwrap().tracked().is_empty());
+        assert!(
+            fixture
+                .backend
+                .reconciliation()
+                .unwrap()
+                .native_calls_quiescent
+        );
+        assert!(fixture.backend.drain_call_events().iter().any(|event| matches!(event,CallManagerWireEvent::Update(u) if u.key==key && u.phase==CallPhase::Ended)));
+    }
+
+    #[test]
+    fn gsm_outgoing_secondary_path_reuse_blocks_only_its_cleanup_identity() {
+        const SECONDARY: &str = "/org/freedesktop/ModemManager1/Call/100";
+        let mut fixture = OutgoingFixture::new_qualified();
+        let primary = fixture.key();
+        fixture.dial(&primary, "+49123456789").unwrap();
+        let secondary = Arc::new(OutgoingEffects::default());
+        secondary.state.store(3, Ordering::SeqCst);
+        secondary.direction.store(1, Ordering::SeqCst);
+        secondary.rate.store(16000, Ordering::SeqCst);
+        fixture
+            .owner
+            .object_server()
+            .at(SECONDARY, OutgoingCall(secondary.clone()))
+            .unwrap();
+        fixture
+            .effects
+            .paths
+            .lock()
+            .unwrap()
+            .push(OwnedObjectPath::try_from(SECONDARY).unwrap());
+        fixture.backend.reconcile_paths().unwrap();
+        let key = fixture
+            .backend
+            .registry()
+            .unwrap()
+            .tracked()
+            .into_iter()
+            .find(|(path, _)| path == SECONDARY)
+            .unwrap()
+            .1;
+        let epoch = fixture.backend.selected_modem_epoch();
+        let proof = fixture.backend.format_admission.clone();
+        let (entered, held) = mpsc::channel();
+        let (release, released) = mpsc::channel();
+        *secondary.state_gate.lock().unwrap() = Some((entered, released));
+        let OutgoingFixture {
+            mut backend,
+            owner,
+            effects,
+            _bus,
+        } = fixture;
+        let request = thread::spawn(move || {
+            let result = backend.targeted_hangup(&key);
+            (backend, result)
+        });
+        held.recv_timeout(Duration::from_secs(3)).unwrap();
+        owner
+            .emit_signal(
+                None::<&str>,
+                TEST_MODEM0,
+                VOICE_INTERFACE,
+                "CallDeleted",
+                &(OwnedObjectPath::try_from(SECONDARY).unwrap(),),
+            )
+            .unwrap();
+        owner
+            .emit_signal(
+                None::<&str>,
+                TEST_MODEM0,
+                VOICE_INTERFACE,
+                "CallAdded",
+                &(OwnedObjectPath::try_from(SECONDARY).unwrap(),),
+            )
+            .unwrap();
+        release.send(()).unwrap();
+        let (backend, result) = request.join().unwrap();
+        assert!(result.is_err());
+        assert_eq!(secondary.hangups.load(Ordering::SeqCst), 0);
+        assert!(backend.lost_call_paths.contains(SECONDARY));
+        assert_eq!(backend.selected_modem_epoch(), epoch);
+        assert_eq!(backend.format_admission, proof);
+        assert!(backend.owns_voice(&primary));
+        assert!(backend.prepared_audio.is_some());
+        assert!(!effects
+            .trace
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|e| e == "pcm_join"));
+    }
+
+    #[test]
+    fn gsm_outgoing_dispatched_start_failure_unknown_and_absence_never_authorize_unstarted_delete()
+    {
+        let mut fixture = OutgoingFixture::new_qualified();
+        let key = fixture.key();
+        fixture.effects.fail_start.store(true, Ordering::SeqCst);
+        assert!(fixture.dial(&key, "+49123456789").is_err());
+        assert_eq!(fixture.started_key(), Some(key.clone()));
+        fixture.effects.state.store(0, Ordering::SeqCst);
+        assert!(fixture.backend.targeted_hangup(&key).is_err());
+        assert!(fixture.backend.delete_created_unstarted(&key).is_err());
+        fixture
+            .owner
+            .emit_signal(
+                None::<&str>,
+                TEST_MODEM0,
+                VOICE_INTERFACE,
+                "CallDeleted",
+                &(OwnedObjectPath::try_from(TEST_OUTGOING_CALL).unwrap(),),
+            )
+            .unwrap();
+        fixture.effects.paths.lock().unwrap().clear();
+        fixture.backend.reconcile_paths().unwrap();
+        assert!(fixture.effects.deletes.lock().unwrap().is_empty());
+        assert_eq!(fixture.effects.hangups.load(Ordering::SeqCst), 0);
+        assert!(fixture.backend.owns_voice(&key));
+        assert_eq!(fixture.started_key(), Some(key.clone()));
+        assert_eq!(
+            fixture.backend.registry().unwrap().path_for(&key),
+            Some(TEST_OUTGOING_CALL)
+        );
+        assert!(fixture.backend.audio.is_none() && fixture.backend.prepared_audio.is_none());
+        assert!(
+            !fixture
+                .backend
+                .reconciliation()
+                .unwrap()
+                .native_calls_quiescent
+        );
+        assert!(fixture.backend.drain_call_events().iter().all(|e| !matches!(e,CallManagerWireEvent::Update(u) if u.key==key && u.phase==CallPhase::Ended)));
+    }
+
+    #[test]
+    fn gsm_outgoing_actual_worker_retains_keyed_data_for_create_start_and_delete_errors() {
+        use crate::protocol::WorkerEnvelope;
+        for failure in ["create", "start", "delete"] {
+            let fixture = OutgoingFixture::new_qualified();
+            let key = fixture.key();
+            fixture.effects.fail_hangup.store(true, Ordering::SeqCst);
+            match failure {
+                "create" => fixture.effects.fail_create.store(true, Ordering::SeqCst),
+                "start" => fixture.effects.fail_start.store(true, Ordering::SeqCst),
+                "delete" => {
+                    fixture.effects.rate.store(0, Ordering::SeqCst);
+                    fixture.effects.fail_delete.store(true, Ordering::SeqCst);
+                }
+                _ => unreachable!(),
+            }
+            let epoch = fixture.backend.selected_modem_epoch();
+            let OutgoingFixture {
+                backend,
+                owner: _owner,
+                effects,
+                _bus,
+            } = fixture;
+            let gsm = GsmWorker::with_modem_backend(backend);
+            crate::worker::tests::assert_gsm_outgoing_uncertain_lease(
+                &gsm,
+                &key,
+                vec![],
+                WorkerEnvelope::command(
+                    "call.dial",
+                    Some("uncertain".into()),
+                    serde_json::json!({"key":key,"address":"+49123456789","admission_epoch":epoch}),
+                ),
+                &["uncertain"],
+                crate::worker::tests::GsmLeaseOutcome::Uncertain,
+                |_, _| {},
+            );
+            assert_eq!(
+                effects.starts.load(Ordering::SeqCst),
+                usize::from(failure == "start")
+            );
+            if failure != "delete" {
+                assert!(effects.deletes.lock().unwrap().is_empty());
+            }
+        }
     }
 
     #[test]
