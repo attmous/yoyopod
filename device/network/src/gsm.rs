@@ -1717,20 +1717,23 @@ impl ModemManagerVoice {
         }
         let epoch = self.selected_epoch;
         let actual = self.provider_baseline()?;
-        let format: HashMap<String, zvariant::OwnedValue> =
-            match self.proxy_for(path)?.get_property("AudioFormat") {
-                Ok(format) => format,
-                Err(error) => {
-                    if self
-                        .audio_key()
-                        .and_then(|key| self.registry.as_ref()?.path_for(key))
-                        == Some(path)
-                    {
-                        self.invalidate_provider_audio();
-                    }
-                    return Err(error.into());
+        let format_result = {
+            let proxy = self.proxy_for(path)?;
+            proxy.get_property("AudioFormat")
+        };
+        let format: HashMap<String, zvariant::OwnedValue> = match format_result {
+            Ok(format) => format,
+            Err(error) => {
+                if self
+                    .audio_key()
+                    .and_then(|key| self.registry.as_ref()?.path_for(key))
+                    == Some(path)
+                {
+                    self.invalidate_provider_audio();
                 }
-            };
+                return Err(error.into());
+            }
+        };
         self.ensure_control()?;
         anyhow::ensure!(
             epoch == self.selected_epoch && !self.provider_invalidated,
@@ -2649,7 +2652,7 @@ mod tests {
                     match release.try_recv() {
                         Ok(()) => break,
                         Err(mpsc::TryRecvError::Empty) if Instant::now() < deadline => {
-                            async_io::Timer::after(Duration::from_millis(5)).await
+                            async_io::Timer::after(Duration::from_millis(5)).await;
                         }
                         _ => {
                             return Err(zbus::fdo::Error::Failed(
@@ -3290,7 +3293,7 @@ mod tests {
 
     #[test]
     fn gsm_provider_held_real_collector_fences_queued_old_dial_and_answer() {
-        let mut f = LifecycleFixture::new_qualified();
+        let f = LifecycleFixture::new_qualified();
         let old = f.epoch();
         let key = f.backend.registry().unwrap().tracked()[0].1.clone();
         let (entered, entering) = mpsc::channel();
