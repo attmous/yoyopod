@@ -2898,6 +2898,10 @@ mod tests {
     struct ReplacementCall(Arc<std::sync::atomic::AtomicUsize>);
     #[zbus::interface(name = "org.freedesktop.ModemManager1.Call")]
     impl ReplacementCall {
+        #[zbus(property)]
+        fn state(&self) -> i32 {
+            3
+        }
         fn hangup(&self) {
             self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         }
@@ -2908,8 +2912,21 @@ mod tests {
     #[zbus::interface(name = "org.freedesktop.ModemManager1.Modem.Voice")]
     impl EmptyCalls {
         #[zbus(property)]
-        fn calls(&self) -> Vec<OwnedObjectPath> {
-            if let Some((entered, release)) = self.gate.lock().unwrap().take() {
+        fn calls(
+            &self,
+            #[zbus(header)] header: Option<zbus::message::Header<'_>>,
+        ) -> Vec<OwnedObjectPath> {
+            // Hold the actual Calls request, not the preceding OM snapshot.
+            let gate = if header
+                .as_ref()
+                .and_then(|h| h.member())
+                .is_some_and(|m| matches!(m.as_str(), "Get" | "GetAll"))
+            {
+                self.gate.lock().unwrap().take()
+            } else {
+                None
+            };
+            if let Some((entered, release)) = gate {
                 entered.send(()).unwrap();
                 release.recv_timeout(Duration::from_secs(3)).unwrap();
             }
@@ -3043,10 +3060,22 @@ mod tests {
             false
         }
         #[zbus(property)]
-        async fn calls(&self) -> zbus::fdo::Result<Vec<OwnedObjectPath>> {
+        async fn calls(
+            &self,
+            #[zbus(header)] header: Option<zbus::message::Header<'_>>,
+        ) -> zbus::fdo::Result<Vec<OwnedObjectPath>> {
             self.reads.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             let paths = self.paths.lock().unwrap().clone();
-            let gate = self.gate.lock().unwrap().take();
+            // The bounded Calls snapshot follows the retained OM barrier.
+            let gate = if header
+                .as_ref()
+                .and_then(|h| h.member())
+                .is_some_and(|m| matches!(m.as_str(), "Get" | "GetAll"))
+            {
+                self.gate.lock().unwrap().take()
+            } else {
+                None
+            };
             if let Some((entered, release)) = gate {
                 entered.send(()).unwrap();
                 let deadline = Instant::now() + Duration::from_secs(3);
@@ -6792,7 +6821,7 @@ mod tests {
         let (release_tx, release_rx) = mpsc::channel();
         old.object_server()
             .at(
-                "/modem/0",
+                TEST_MODEM0,
                 EmptyCalls {
                     gate: Mutex::new(Some((entered_tx, release_rx))),
                 },
@@ -6801,7 +6830,7 @@ mod tests {
         replacement
             .object_server()
             .at(
-                "/modem/0",
+                TEST_MODEM0,
                 EmptyCalls {
                     gate: Mutex::new(None),
                 },
@@ -6809,6 +6838,20 @@ mod tests {
             .unwrap();
         allow_replacement(&old);
         let (mut backend, key) = old_native_backend(&bus, &old);
+        // This held-Calls test must expose the selected native interfaces and
+        // retain the actual collector used by both reconciliation barriers.
+        old.object_server()
+            .at("/org/freedesktop/ModemManager1", zbus::fdo::ObjectManager)
+            .unwrap();
+        old.object_server().at(TEST_MODEM0, ReconnectModem).unwrap();
+        backend.modem = Some(OwnedObjectPath::try_from(TEST_MODEM0).unwrap());
+        backend.signals = Some(
+            ModemSignals::start(
+                backend.connection.as_ref().unwrap(),
+                old.unique_name().unwrap().as_str(),
+            )
+            .unwrap(),
+        );
         backend.ensure_control().unwrap();
         let scan = thread::spawn(move || {
             let result = backend.reconcile_paths();
