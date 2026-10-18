@@ -2978,12 +2978,13 @@ mod tests {
             #[zbus(header)] header: Option<zbus::message::Header<'_>>,
         ) -> zbus::fdo::Result<i32> {
             let state = self.0.state.load(Ordering::SeqCst);
-            // Hold only the actual Properties.Get State reply, never the OM
-            // snapshot used by the preceding retained-collector barrier.
+            // A fresh zbus proxy populates its Lazy cache through GetAll;
+            // either Properties reply carries this bounded State observation.
+            // The preceding OM snapshot is not a Properties Get/GetAll read.
             let gate = if header
                 .as_ref()
                 .and_then(|h| h.member())
-                .is_some_and(|m| m.as_str() == "Get")
+                .is_some_and(|m| matches!(m.as_str(), "Get" | "GetAll"))
             {
                 self.0.state_gate.lock().unwrap().take()
             } else {
