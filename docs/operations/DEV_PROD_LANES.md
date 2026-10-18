@@ -166,6 +166,34 @@ publishing a prod slot.
 
 ## Pitfalls
 
+Explicit provider maintenance is supported only with proven dev ownership and
+inactive prod. `yoyopod target deploy --install-provider modemmanager` branches
+before the ordinary checkout sync and stages a verified exact-run provider/Rust
+artifact plus complete offline rollback. It refuses live Calls on any modem,
+unmanaged owners, unhealthy package state or unavailable exact prior archives.
+Unsupported prior config/Rust ownership, modes, ACLs or xattrs are refused before
+stop. Package actions are checked under the actual APT frontend protocol; changed
+state, unsupported hook negotiation or uncertain post-attempt evidence cannot be
+replaced by a stale rollback snapshot and require stopped-state recovery.
+Ordinary deploy keeps provider prerequisites read-only and never reattests an
+unexpected ModemManager restart.
+
+The protected process receipt lives at
+`/var/lib/yoyopod/providers/modemmanager/{installed,manifest,profile}.json`.
+Manifest/profile files preserve their exact artifact bytes. Root maintenance
+attests the actual running executable and bus/PID/start identity; normal runtime
+reads that proof without privileged executable access. Provider restart requires
+the explicit maintenance path again. An installed qualification-pending outcome
+is successful installation health while GSM audio remains unavailable.
+
+Attempts preserve phase/outcome/recovery records below
+`/var/lib/yoyopod/providers/modemmanager/transactions/<sha>/attempt.*`.
+Rollback must restore package/configuration/Rust consistency and prove service
+stops before prior native ownership resumes. If recovery is required, retain the
+record and staged offline closure; its stop-proof flags describe what was
+actually established. This software path grants no physical maintenance,
+framing qualification or call permission.
+
 - Do not run dev and prod runtime services together; they share
   hardware, audio, and the PID file contract.
 - `target mode activate dev|prod` is the supported way to clean up

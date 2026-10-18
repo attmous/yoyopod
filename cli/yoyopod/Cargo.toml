@@ -22,7 +22,9 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "time"]
 shell-escape = "0.1"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 
-[dev-dependencies]
+sha2 = "=0.10.9"
+tar = { version = "0.4", default-features = false }
+flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
 tempfile = "3"
 
 [lints]

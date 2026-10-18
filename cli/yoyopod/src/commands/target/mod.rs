@@ -18,6 +18,7 @@ mod deploy;
 mod logs;
 mod mode;
 mod ops;
+mod provider;
 mod screenshot;
 mod validate;
 

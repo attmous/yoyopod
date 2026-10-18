@@ -41,7 +41,7 @@ pub fn run(ctx: &TargetContext, args: ValidateArgs) -> Result<i32> {
              (Round 2 follow-up; see docs/ROADMAP.md)."
         );
     }
-    if args.with_rust_ui_host {
+    if args.ui.with_rust_ui_host {
         bail!(
             "--with-rust-ui-host: the rust-ui-host diagnostic returns with the Round 4+ \
              diagnostics (see docs/ROADMAP.md)."
@@ -86,10 +86,10 @@ fn build_validate_script(branch: &str, args: &ValidateArgs) -> String {
     steps.push(format!("{ON_PI_BINARY} validate deploy"));
     steps.push(format!("{ON_PI_BINARY} validate smoke"));
     steps.push(format!("{ON_PI_BINARY} validate stability"));
-    if args.with_lvgl_soak {
+    if args.ui.with_lvgl_soak {
         steps.push(format!("{ON_PI_BINARY} validate lvgl"));
     }
-    if args.with_navigation {
+    if args.ui.with_navigation {
         steps.push(format!("{ON_PI_BINARY} validate navigation"));
     }
     steps.join(" && ")
@@ -103,9 +103,7 @@ mod tests {
         ValidateArgs {
             sha: String::new(),
             with_voip: false,
-            with_lvgl_soak: false,
-            with_navigation: false,
-            with_rust_ui_host: false,
+            ui: crate::cli::UiValidationArgs::default(),
         }
     }
 
@@ -144,8 +142,8 @@ mod tests {
     #[test]
     fn optional_stages_append_after_base() {
         let mut args = base_args();
-        args.with_lvgl_soak = true;
-        args.with_navigation = true;
+        args.ui.with_lvgl_soak = true;
+        args.ui.with_navigation = true;
         let script = build_validate_script("main", &args);
         let stability = script.find("validate stability").unwrap();
         let lvgl = script.find("validate lvgl").unwrap();

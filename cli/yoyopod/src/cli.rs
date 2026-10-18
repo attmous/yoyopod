@@ -1,6 +1,6 @@
 //! Top-level clap arg tree.
 
-use clap::{Args, Parser, Subcommand};
+use clap::{Args, Parser, Subcommand, ValueEnum};
 
 #[derive(Debug, Parser)]
 #[command(
@@ -137,6 +137,15 @@ pub struct DeployArgs {
     /// finishes (timeout: 30 minutes).
     #[arg(long)]
     pub wait_for_ci: bool,
+
+    /// Explicitly maintain the pinned provider in a staged, no-call dev transaction.
+    #[arg(long, value_enum)]
+    pub install_provider: Option<ProviderKind>,
+}
+
+#[derive(Clone, Copy, Debug, ValueEnum)]
+pub enum ProviderKind {
+    Modemmanager,
 }
 
 #[derive(Debug, Args)]
@@ -149,6 +158,12 @@ pub struct ValidateArgs {
     #[arg(long)]
     pub with_voip: bool,
 
+    #[command(flatten)]
+    pub ui: UiValidationArgs,
+}
+
+#[derive(Debug, Default, Args)]
+pub struct UiValidationArgs {
     /// Add the UI/LVGL navigation soak stage.
     #[arg(long)]
     pub with_lvgl_soak: bool,

@@ -13,7 +13,7 @@ Single binary, `yoyopod`. Nine commands all under `yoyopod target ...`:
 | `target config edit` | implemented |
 | `target mode status` | implemented |
 | `target mode activate {dev,prod}` | implemented |
-| `target deploy [--sha ...] [--clean-native] [--wait-for-ci]` | implemented |
+| `target deploy [--sha ...] [--clean-native] [--wait-for-ci] [--install-provider modemmanager]` | implemented; provider maintenance is explicit and dev-only |
 | `target status` | implemented |
 | `target restart` | implemented |
 | `target logs [--lines N] [--follow] [--errors] [--filter PATTERN]` | implemented |
@@ -114,6 +114,68 @@ queued or in-progress (timeout 30 min).
 
 `target deploy` requires `gh` to be on `$PATH` and authenticated
 (`gh auth status`).
+
+### Explicit ModemManager maintenance
+
+Ordinary deployment only reads ModemManager readiness and compares the installed
+SIM7600 udev rule. Missing prerequisites require explicit maintenance; ordinary
+deployment never installs, enables, restarts or reattests the provider. Existing
+Wi-Fi/BlueZ setup and legacy Rust artifacts keep their existing behavior.
+
+After maintenance/qualification scope has been reviewed, the explicit command is:
+
+```bash
+yoyopod target deploy --branch <branch> --sha <exact-pushed-sha> \
+  --install-provider modemmanager --wait-for-ci
+```
+
+This path freshly downloads the selected successful CI run into a private
+directory, verifies the raw USTAR membership, strict manifests and every file
+hash, and stages the exact provider and nine Rust binaries before normal Pi sync
+can run. A cached filename is never provider provenance. The selected artifact
+SHA can precede the operator checkout HEAD.
+
+The embedded transaction runs under one maintenance lock. It requires the active
+dev lane, inactive prod, no unmanaged native/provider owner and no live Call on
+any modem. Before stopping anything it captures prior package archives,
+configuration, receipt, repository and Rust identities, then simulates offline
+forward installation and rollback against the predicted candidate status. An
+affected package in a residual state that cannot be restored exactly is refused
+before stop; unrelated healthy residual packages are preserved. Missing exact
+rollback archives also stop staging. Config must contain ordinary files and
+directories owned by the existing service account and its primary group, without
+special mode bits, extended ACLs or xattrs. The same boundary covers prior Rust
+executables and affected checkout directories; rollback preserves their captured
+supported modes rather than forcing 0755. Read-only `getfacl`/`getfattr` probes are
+explicit prerequisites; missing tools or unsupported metadata are refused before
+stop, with no implicit package installation.
+
+The actual package attempt revalidates the saved status, selections and exact
+ordered package/version/architecture/path actions through trusted APT hooks under
+APT's normal frontend lock. It requires actual VERSION3 negotiation before dpkg
+mutation. Unsupported negotiation, contention or external state changes stop the
+attempt; an absent or uncertain own-mutation/post-attempt proof prevents stale
+snapshot rollback and retains stopped services with a recovery record. Offline
+simulation alone does not prove that target hook negotiation works.
+
+An installed, identity-verified `qualification_pending` provider returns a
+distinct successful installation outcome and retains closed audio admission.
+It is not framing evidence or an audio acceptance result. Unexpected provider
+restart invalidates the process-bound receipt; the same explicit maintenance
+path is required for reattestation, without adding normal-runtime privileges.
+
+Protected attempts remain under
+`/var/lib/yoyopod/providers/modemmanager/transactions/<sha>/attempt.*`.
+The common `/var/lib/yoyopod` ancestor stays root owned; audio and Bluetooth
+children retain service access. Explicit maintenance can migrate the legacy
+service-owned common parent after checking fixed provider descendants already
+have protected root ownership; it never promotes an untrusted provider subtree.
+`journal.json` records phases, `outcome.json` records install/rollback, and a failed
+rollback leaves `recovery.json` with prior identity and actual stop-proof flags.
+Do not start a mixed installation or delete that evidence to retry. Rollback uses
+only staged bytes, restores prior configuration/Rust, and reattests the restored
+provider process before prior native ownership resumes; stock health remains
+audio ineligible. No production slot or provider qualification is changed here.
 
 ## Dry-run
 

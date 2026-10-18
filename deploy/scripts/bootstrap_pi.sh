@@ -92,8 +92,10 @@ install -d -m 0755 -o "${INVOKING_USER}" -g "${INVOKING_GROUP}" \
 install -d -m 0755 -o "${INVOKING_USER}" -g "${INVOKING_GROUP}" \
     "${DEV_ROOT}/checkout" "${DEV_ROOT}/venv" "${DEV_ROOT}/state" \
     "${DEV_ROOT}/logs" "${DEV_ROOT}/tmp"
+[[ ! -L /var/lib/yoyopod ]] || { echo 'Refusing symlink /var/lib/yoyopod' >&2; exit 1; }
+install -d -m 0755 -o root -g root /var/lib/yoyopod
 install -d -m 0750 -o "${INVOKING_USER}" -g "${INVOKING_GROUP}" \
-    /var/lib/yoyopod /var/lib/yoyopod/bluetooth /var/lib/yoyopod/audio
+    /var/lib/yoyopod/bluetooth /var/lib/yoyopod/audio
 
 # 2. Install rollback helper (owned by root, invoked by systemd).
 install -m 0755 -o root -g root \

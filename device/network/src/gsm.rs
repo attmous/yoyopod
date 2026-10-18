@@ -608,6 +608,15 @@ impl GsmWorker {
                     if send_states.send(state.clone()).is_err() {
                         break;
                     }
+                    if previous.as_ref().map(|old: &GsmCallState| old.available)
+                        != Some(state.available)
+                    {
+                        eprintln!(
+                            "GSM availability pid={} available={}",
+                            std::process::id(),
+                            state.available
+                        );
+                    }
                     previous = Some(state);
                 }
             }
@@ -1759,7 +1768,10 @@ impl ModemManagerVoice {
                 Ok(())
             });
             if let Err(error) = provider_ready {
-                eprintln!("GSM provider audio unavailable: {error:#}");
+                eprintln!(
+                    "GSM provider audio unavailable: {error:#} pid={}",
+                    std::process::id()
+                );
                 self.cached.available = false;
                 self.cached.unavailable_reason = "Audio unavailable".into();
             }

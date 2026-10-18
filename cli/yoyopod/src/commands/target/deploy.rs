@@ -19,8 +19,8 @@ use crate::quoting::shell_quote;
 use crate::repo::current_repo_root;
 use crate::ssh::{run_remote, run_remote_capture, RemoteWorkdir};
 
-use super::ops;
 use super::TargetContext;
+use super::{ops, provider};
 
 const CI_POLL_INTERVAL_SECS: u64 = 20;
 const CI_POLL_TIMEOUT_MINS: u64 = 30;
@@ -69,6 +69,10 @@ pub fn run(
         println!("artifact: {artifact_name}");
         println!("local-artifact-dir: {}", local_artifact_dir.display());
         println!("would: ensure CI run for sha is successful, download {tarball_name}");
+        if args.install_provider.is_some() {
+            println!("would: freshly authenticate exact-run artifact, verify and stage provider/Rust plus complete offline rollback; require dev ownership and no calls before the locked maintenance transaction");
+            return Ok(0);
+        }
         println!(
             "would: resolve the effective user of {} and install Wi-Fi and BlueZ authorization",
             lane.dev_service
@@ -81,6 +85,16 @@ pub fn run(
     }
 
     let run_id = ensure_successful_ci_run(&branch, &resolved_sha, args.wait_for_ci)?;
+
+    // Explicit provider staging branches before ordinary checkout sync, host
+    // prerequisites, upload or extraction. A cached filename confers no trust.
+    if args.install_provider.is_some() {
+        let bundle = provider::fresh_bundle(&run_id, &resolved_sha)?;
+        let staged = provider::stage_provider(ctx, &bundle)?;
+        let outcome = provider::apply_provider(ctx, &staged, &lane, &ctx.pi)?;
+        println!("provider installation: {outcome:?}; sha={resolved_sha} run={run_id}; hardware audio acceptance is separate");
+        return Ok(0);
+    }
 
     std::fs::create_dir_all(&local_artifact_dir)
         .with_context(|| format!("create {}", local_artifact_dir.display()))?;
@@ -236,14 +250,13 @@ pub fn run(
            sudo -n systemctl restart bluealsa.service; \
          fi && \
          systemctl is-active --quiet bluetooth.service bluealsa.service && \
-         sudo -n install -d -m 0750 -o {user} -g \"$service_group\" \
-           /var/lib/yoyopod /var/lib/yoyopod/bluetooth /var/lib/yoyopod/audio",
+         {state_directories}",
         bluealsa_dropin_dir = shell_quote(BLUEALSA_DROPIN_DIR),
         bluealsa_dropin_source = shell_quote(BLUEALSA_DROPIN_SOURCE),
         bluealsa_dropin_path = shell_quote(BLUEALSA_DROPIN_PATH),
         bluetooth_user_authorization = bluetooth_user_authorization,
         service_group_lookup = service_group_lookup,
-        user = shell_quote(&wifi_service_user),
+        state_directories = bluetooth_state_directories_command(&wifi_service_user),
     );
     let rc = run_remote(
         &ctx.conn,
@@ -314,6 +327,16 @@ fn bluetooth_user_authorization_command(service_user: &str) -> String {
     )
 }
 
+fn bluetooth_state_directories_command(service_user: &str) -> String {
+    format!(
+        "test ! -L /var/lib/yoyopod && \
+         sudo -n install -d -m 0755 -o root -g root /var/lib/yoyopod && \
+         sudo -n install -d -m 0750 -o {} -g \"$service_group\" \
+           /var/lib/yoyopod/bluetooth /var/lib/yoyopod/audio",
+        shell_quote(service_user)
+    )
+}
+
 fn resolve_wifi_service_user(ctx: &TargetContext, service: &str) -> Result<String> {
     let command = format!(
         "systemctl show --property=User --value {}",
@@ -342,22 +365,10 @@ fn normalize_systemd_service_user(service_user: &str) -> Result<String> {
 
 fn modem_manager_prerequisites_command() -> String {
     "if ! command -v mmcli >/dev/null 2>&1; then \
-       sudo -n apt-get update && \
-       sudo -n env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends modemmanager; \
+       echo 'ModemManager missing: explicit --install-provider modemmanager maintenance required' >&2; exit 2; \
      fi && \
-     modem_rule_changed=0 && \
-     sudo -n install -d -m 0755 /etc/udev/rules.d && \
-     if ! sudo -n cmp -s deploy/udev/77-yoyopod-sim7600.rules /etc/udev/rules.d/77-yoyopod-sim7600.rules; then \
-       sudo -n install -o root -g root -m 0644 deploy/udev/77-yoyopod-sim7600.rules /etc/udev/rules.d/77-yoyopod-sim7600.rules && \
-       sudo -n udevadm control --reload-rules && \
-       sudo -n udevadm trigger --subsystem-match=tty && \
-       sudo -n udevadm trigger --subsystem-match=usbmisc && \
-       sudo -n udevadm settle && \
-       modem_rule_changed=1; \
-     fi && \
-     sudo -n systemctl enable ModemManager.service && \
-     if [ \"$modem_rule_changed\" -eq 1 ] || ! systemctl is-active --quiet ModemManager.service; then \
-       sudo -n systemctl restart ModemManager.service; \
+     if ! cmp -s deploy/udev/77-yoyopod-sim7600.rules /etc/udev/rules.d/77-yoyopod-sim7600.rules; then \
+       echo 'ModemManager udev migration requires explicit --install-provider modemmanager maintenance' >&2; exit 2; \
      fi && systemctl is-active --quiet ModemManager.service".to_string()
 }
 
@@ -461,7 +472,7 @@ fn require_git(argv: &[&str], err_msg: &str) -> Result<()> {
     }
     let mut message = String::from(err_msg);
     if !out.stderr.trim().is_empty() {
-        message.push_str("\n");
+        message.push('\n');
         message.push_str(out.stderr.trim());
     }
     Err(anyhow!(message))
@@ -534,7 +545,7 @@ fn ensure_successful_ci_run(branch: &str, sha: &str, wait: bool) -> Result<Strin
     }
 }
 
-fn download_artifact(run_id: &str, artifact_name: &str, dest: &Path) -> Result<()> {
+pub(super) fn download_artifact(run_id: &str, artifact_name: &str, dest: &Path) -> Result<()> {
     let dest_str = dest.to_string_lossy().to_string();
     let rc = run_local(
         [
@@ -565,12 +576,12 @@ pub(super) fn build_pi_sync(branch: &str, sha: &str, clean_native: bool) -> Stri
         "git clean -fd".to_string(),
         format!("git checkout --force -B {br} {origin_br}"),
     ];
-    if !sha.is_empty() {
+    if sha.is_empty() {
+        steps.push(format!("git reset --hard {origin_br}"));
+    } else {
         let sh = shell_quote(sha);
         steps.push(format!("git merge-base --is-ancestor {sh} {origin_br}"));
         steps.push(format!("git reset --hard {sh}"));
-    } else {
-        steps.push(format!("git reset --hard {origin_br}"));
     }
     steps.push("git clean -fd".to_string());
     if clean_native {
@@ -747,6 +758,17 @@ mod tests {
         assert!(command.contains("grep -Fx bluetooth"));
         assert!(bootstrap.contains("usermod -a -G bluetooth \"${INVOKING_USER}\""));
         assert!(bootstrap.contains("grep -Fx bluetooth"));
+    }
+
+    #[test]
+    fn provider_receipt_ancestor_stays_root_owned_while_audio_children_keep_service_access() {
+        let command = bluetooth_state_directories_command("yoyopod");
+        assert!(command.contains("test ! -L /var/lib/yoyopod"));
+        assert!(command.contains("install -d -m 0755 -o root -g root /var/lib/yoyopod &&"));
+        assert!(command.contains("install -d -m 0750 -o yoyopod -g \"$service_group\" /var/lib/yoyopod/bluetooth /var/lib/yoyopod/audio"));
+        let bootstrap = include_str!("../../../../../deploy/scripts/bootstrap_pi.sh");
+        assert!(bootstrap.contains("install -d -m 0755 -o root -g root /var/lib/yoyopod"));
+        assert!(!bootstrap.contains("/var/lib/yoyopod /var/lib/yoyopod/bluetooth"));
     }
 
     #[test]

@@ -31,7 +31,9 @@ pub fn build(pi: &PiPaths, lines: u32, follow: bool, errors: bool, filter: &str)
     if !filter.is_empty() {
         // Single-quote-safe escape for grep: POSIX `'\''`.
         let escaped = filter.replace('\'', "'\\''");
-        cmd.push_str(&format!(" | grep -- '{escaped}'"));
+        cmd.push_str(" | grep -- '");
+        cmd.push_str(&escaped);
+        cmd.push('\'');
     }
     cmd
 }
