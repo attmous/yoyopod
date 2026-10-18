@@ -9,32 +9,37 @@ use super::{props, Element, ElementProps, Layout, NodeIdAlloc, NodePath};
 #[derive(Debug, Default)]
 pub struct Reconciler;
 
+struct DiffContext<'a, 'timeline> {
+    previous_ids: &'a BTreeMap<NodePath, NodeId>,
+    next_ids: &'a mut BTreeMap<NodePath, NodeId>,
+    node_alloc: &'a mut NodeIdAlloc,
+    stage: Stage,
+    sampler: &'a TimelineSampler<'timeline>,
+    out: &'a mut Vec<Mutation>,
+}
+
 impl Reconciler {
     pub fn diff(
         &mut self,
         previous: Option<&Element>,
         previous_ids: &BTreeMap<NodePath, NodeId>,
         next: &Element,
-        stage: Stage,
+        frame: (Stage, &TimelineSampler<'_>),
         node_alloc: &mut NodeIdAlloc,
-        sampler: &TimelineSampler<'_>,
         out: &mut Vec<Mutation>,
     ) -> BTreeMap<NodePath, NodeId> {
         out.clear();
         let mut next_ids = BTreeMap::new();
         let root_path = NodePath::root(next);
-        diff_element(
-            previous,
-            next,
-            NodeId(0),
-            root_path,
+        let mut context = DiffContext {
             previous_ids,
-            &mut next_ids,
+            next_ids: &mut next_ids,
             node_alloc,
-            stage,
-            sampler,
+            stage: frame.0,
+            sampler: frame.1,
             out,
-        );
+        };
+        diff_element(previous, next, NodeId(0), root_path, &mut context);
         next_ids
     }
 }
@@ -44,54 +49,40 @@ fn diff_element(
     next: &Element,
     parent: NodeId,
     path: NodePath,
-    previous_ids: &BTreeMap<NodePath, NodeId>,
-    next_ids: &mut BTreeMap<NodePath, NodeId>,
-    node_alloc: &mut NodeIdAlloc,
-    stage: Stage,
-    sampler: &TimelineSampler<'_>,
-    out: &mut Vec<Mutation>,
+    context: &mut DiffContext<'_, '_>,
 ) -> NodeId {
-    let previous_node = previous_ids.get(&path).copied();
+    let previous_node = context.previous_ids.get(&path).copied();
     let replace = previous
         .map(|previous| should_replace(previous, next))
         .unwrap_or(false);
     let node = if replace {
-        node_alloc.alloc()
+        context.node_alloc.alloc()
     } else {
-        previous_node.unwrap_or_else(|| node_alloc.alloc())
+        previous_node.unwrap_or_else(|| context.node_alloc.alloc())
     };
-    next_ids.insert(path.clone(), node);
+    context.next_ids.insert(path.clone(), node);
 
     match previous {
-        None => create_subtree(
-            node, parent, next, path, next_ids, node_alloc, stage, sampler, out,
-        ),
+        None => create_subtree(node, parent, next, path, context),
         Some(previous) if replace => {
             if let Some(previous_node) = previous_node {
-                remove_subtree(previous, path.clone(), previous_node, previous_ids, out);
+                remove_subtree(
+                    previous,
+                    path.clone(),
+                    previous_node,
+                    context.previous_ids,
+                    context.out,
+                );
             }
-            create_subtree(
-                node, parent, next, path, next_ids, node_alloc, stage, sampler, out,
-            );
+            create_subtree(node, parent, next, path, context);
         }
         Some(previous) => {
-            emit_prop_updates(node, &previous.props, &next.props, out);
+            emit_prop_updates(node, &previous.props, &next.props, context.out);
             if previous.layout != next.layout {
-                emit_place(node, next.layout, stage, out);
+                emit_place(node, next.layout, context.stage, context.out);
             }
-            emit_animation_updates(node, next, sampler, out);
-            diff_children(
-                previous,
-                next,
-                node,
-                path,
-                previous_ids,
-                next_ids,
-                node_alloc,
-                stage,
-                sampler,
-                out,
-            );
+            emit_animation_updates(node, next, context.sampler, context.out);
+            diff_children(previous, next, node, path, context);
         }
     }
     node
@@ -102,28 +93,22 @@ fn create_subtree(
     parent: NodeId,
     element: &Element,
     path: NodePath,
-    next_ids: &mut BTreeMap<NodePath, NodeId>,
-    node_alloc: &mut NodeIdAlloc,
-    stage: Stage,
-    sampler: &TimelineSampler<'_>,
-    out: &mut Vec<Mutation>,
+    context: &mut DiffContext<'_, '_>,
 ) {
-    next_ids.insert(path.clone(), node);
-    out.push(Mutation::Create {
+    context.next_ids.insert(path.clone(), node);
+    context.out.push(Mutation::Create {
         node,
         parent,
         kind: element.kind,
         role: element.role,
     });
-    emit_prop_updates(node, &ElementProps::default(), &element.props, out);
-    emit_place(node, element.layout, stage, out);
-    emit_animation_updates(node, element, sampler, out);
+    emit_prop_updates(node, &ElementProps::default(), &element.props, context.out);
+    emit_place(node, element.layout, context.stage, context.out);
+    emit_animation_updates(node, element, context.sampler, context.out);
     for (index, child) in element.children.iter().enumerate() {
         let child_path = path.child(child, index);
-        let child_node = node_alloc.alloc();
-        create_subtree(
-            child_node, node, child, child_path, next_ids, node_alloc, stage, sampler, out,
-        );
+        let child_node = context.node_alloc.alloc();
+        create_subtree(child_node, node, child, child_path, context);
     }
 }
 
@@ -132,12 +117,7 @@ fn diff_children(
     next: &Element,
     parent: NodeId,
     parent_path: NodePath,
-    previous_ids: &BTreeMap<NodePath, NodeId>,
-    next_ids: &mut BTreeMap<NodePath, NodeId>,
-    node_alloc: &mut NodeIdAlloc,
-    stage: Stage,
-    sampler: &TimelineSampler<'_>,
-    out: &mut Vec<Mutation>,
+    context: &mut DiffContext<'_, '_>,
 ) {
     let mut order = Vec::with_capacity(next.children.len());
     let mut matched_previous = vec![false; previous.children.len()];
@@ -155,18 +135,7 @@ fn diff_children(
             matched_previous[previous_index] = true;
             previous_child
         });
-        let node = diff_element(
-            previous_child,
-            child,
-            parent,
-            child_path,
-            previous_ids,
-            next_ids,
-            node_alloc,
-            stage,
-            sampler,
-            out,
-        );
+        let node = diff_element(previous_child, child, parent, child_path, context);
         order.push(node);
     }
     for (index, child) in previous.children.iter().enumerate() {
@@ -174,12 +143,14 @@ fn diff_children(
             continue;
         }
         let child_path = parent_path.child(child, index);
-        if let Some(node) = previous_ids.get(&child_path).copied() {
-            remove_subtree(child, child_path, node, previous_ids, out);
+        if let Some(node) = context.previous_ids.get(&child_path).copied() {
+            remove_subtree(child, child_path, node, context.previous_ids, context.out);
         }
     }
-    if !order.is_empty() && child_order_changed(previous, &parent_path, previous_ids, &order) {
-        out.push(Mutation::Reorder { parent, order });
+    if !order.is_empty()
+        && child_order_changed(previous, &parent_path, context.previous_ids, &order)
+    {
+        context.out.push(Mutation::Reorder { parent, order });
     }
 }
 

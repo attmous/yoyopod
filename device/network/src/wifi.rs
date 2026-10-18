@@ -1238,7 +1238,7 @@ fn validate_ipv4_config(config: &WifiIpv4Config) -> Result<(), WifiOperationErro
 }
 
 fn validate_ssid(ssid: &str) -> Result<(), WifiOperationError> {
-    let length = ssid.as_bytes().len();
+    let length = ssid.len();
     if ssid.trim().is_empty() || length > 32 || ssid.chars().any(|character| character.is_control())
     {
         return Err(WifiOperationError::new(

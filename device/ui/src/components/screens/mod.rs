@@ -29,18 +29,30 @@ use yoyopod_protocol::ui::{ListItemSnapshot, RuntimeSnapshot, UiScreen};
 
 use crate::scene::{Scene, SceneDefaults, StopwatchVisualPhase};
 
-pub fn scene_for_screen(
+pub(crate) struct ScreenRenderState<'a> {
+    pub(crate) selected_playlist: Option<&'a ListItemSnapshot>,
+    pub(crate) selected_contact: Option<&'a ListItemSnapshot>,
+    pub(crate) replay_index: usize,
+    pub(crate) stopwatch_display: String,
+    pub(crate) stopwatch_phase: StopwatchVisualPhase,
+    pub(crate) stopwatch_actions: Vec<crate::scene::ButtonModel>,
+}
+
+pub(crate) fn scene_for_screen(
     screen: UiScreen,
     snapshot: &RuntimeSnapshot,
     focus: usize,
-    selected_playlist: Option<&ListItemSnapshot>,
-    selected_contact: Option<&ListItemSnapshot>,
-    replay_index: usize,
-    stopwatch_display: String,
-    stopwatch_phase: StopwatchVisualPhase,
-    stopwatch_actions: Vec<crate::scene::ButtonModel>,
+    state: ScreenRenderState<'_>,
     defaults: SceneDefaults,
 ) -> Scene {
+    let ScreenRenderState {
+        selected_playlist,
+        selected_contact,
+        replay_index,
+        stopwatch_display,
+        stopwatch_phase,
+        stopwatch_actions,
+    } = state;
     let scene = match screen {
         UiScreen::Hub => hub::scene(&hub::props_from(snapshot, focus, defaults.clone())),
         UiScreen::Listen => listen::scene(&listen::props_from(snapshot, focus, defaults.clone())),

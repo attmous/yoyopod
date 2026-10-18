@@ -7,8 +7,9 @@ pub mod graph;
 pub mod hud;
 pub mod layers;
 pub mod modal;
+#[path = "scene.rs"]
+pub mod model;
 pub(crate) mod roles;
-pub mod scene;
 pub mod stage;
 
 pub use backdrop::Backdrop;
@@ -28,7 +29,7 @@ pub use graph::{
 pub use hud::{HudBattery, HudConnectivity, HudConnectivityKind, HudScene, HudStatus};
 pub use layers::{LayerSlot, LAYER_ORDER};
 pub use modal::Modal;
-pub use scene::{
+pub use model::{
     ContextLabelModel, Scene, SceneContext, SceneId, SetupCounterModel, WheelHeaderModel,
 };
 pub use stage::{region_rect, LayoutRect, RegionId, Stage};

@@ -893,21 +893,23 @@ impl UiRuntime {
                 rendered_screen,
                 &self.snapshot,
                 rendered_focus,
-                self.selected_playlist.as_ref(),
-                self.selected_contact.as_ref(),
-                self.replay_index,
-                self.stopwatch.display_text(now_ms),
-                match self.stopwatch.phase {
-                    super::state::StopwatchPhase::Idle => StopwatchVisualPhase::Ready,
-                    super::state::StopwatchPhase::Running => StopwatchVisualPhase::Running,
-                    super::state::StopwatchPhase::Paused => StopwatchVisualPhase::Paused,
+                components::screens::ScreenRenderState {
+                    selected_playlist: self.selected_playlist.as_ref(),
+                    selected_contact: self.selected_contact.as_ref(),
+                    replay_index: self.replay_index,
+                    stopwatch_display: self.stopwatch.display_text(now_ms),
+                    stopwatch_phase: match self.stopwatch.phase {
+                        super::state::StopwatchPhase::Idle => StopwatchVisualPhase::Ready,
+                        super::state::StopwatchPhase::Running => StopwatchVisualPhase::Running,
+                        super::state::StopwatchPhase::Paused => StopwatchVisualPhase::Paused,
+                    },
+                    stopwatch_actions: (0..self.stopwatch.action_count())
+                        .map(|index| ButtonModel {
+                            title: self.stopwatch.action_label(index).to_string(),
+                            icon_key: self.stopwatch.action_icon(index).to_string(),
+                        })
+                        .collect(),
                 },
-                (0..self.stopwatch.action_count())
-                    .map(|index| ButtonModel {
-                        title: self.stopwatch.action_label(index).to_string(),
-                        icon_key: self.stopwatch.action_icon(index).to_string(),
-                    })
-                    .collect(),
                 defaults,
             )
         };

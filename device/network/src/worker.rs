@@ -130,8 +130,7 @@ pub fn run(config_dir: &str) -> Result<()> {
             stdin_channel(),
             &mut stdout,
             DEFAULT_POLL_INTERVAL,
-            wifi,
-            bluetooth,
+            WirelessControllers { wifi, bluetooth },
             AudioManager::open(config_dir),
             Some(GsmWorker::start()),
         ),
@@ -140,8 +139,7 @@ pub fn run(config_dir: &str) -> Result<()> {
             stdin_channel(),
             &mut stdout,
             DEFAULT_POLL_INTERVAL,
-            wifi,
-            bluetooth,
+            WirelessControllers { wifi, bluetooth },
             AudioManager::open(config_dir),
             Some(GsmWorker::start()),
         ),
@@ -201,8 +199,10 @@ where
         reader_channel(input),
         output,
         poll_interval,
-        Box::new(UnavailableWifiController),
-        Box::new(UnavailableBluetoothController),
+        WirelessControllers {
+            wifi: Box::new(UnavailableWifiController),
+            bluetooth: Box::new(UnavailableBluetoothController),
+        },
         AudioManager::open(&config_dir),
         None,
     )
@@ -226,11 +226,18 @@ where
         reader_channel(input),
         output,
         poll_interval,
-        wifi,
-        Box::new(UnavailableBluetoothController),
+        WirelessControllers {
+            wifi,
+            bluetooth: Box::new(UnavailableBluetoothController),
+        },
         AudioManager::open(&config_dir),
         None,
     )
+}
+
+struct WirelessControllers {
+    wifi: Box<dyn WifiController>,
+    bluetooth: Box<dyn BluetoothController>,
 }
 
 fn run_with_runtime_loop<C, W>(
@@ -238,8 +245,10 @@ fn run_with_runtime_loop<C, W>(
     input_rx: mpsc::Receiver<io::Result<String>>,
     output: &mut W,
     poll_interval: Duration,
-    mut wifi: Box<dyn WifiController>,
-    mut bluetooth: Box<dyn BluetoothController>,
+    WirelessControllers {
+        mut wifi,
+        mut bluetooth,
+    }: WirelessControllers,
     mut audio: AudioManager,
     gsm: Option<GsmWorker>,
 ) -> Result<()>
@@ -361,9 +370,11 @@ where
                 }
                 match handle_command(
                     &mut runtime,
-                    wifi.as_mut(),
-                    &mut pending_wifi_change,
-                    &mut provisioning,
+                    WifiCommandContext {
+                        wifi: wifi.as_mut(),
+                        pending_wifi_change: &mut pending_wifi_change,
+                        provisioning: &mut provisioning,
+                    },
                     bluetooth.as_mut(),
                     &mut bluetooth_state,
                     &mut audio,
@@ -693,11 +704,15 @@ enum LoopControl {
     Shutdown,
 }
 
+struct WifiCommandContext<'a> {
+    wifi: &'a mut dyn WifiController,
+    pending_wifi_change: &'a mut Option<PendingWifiChange>,
+    provisioning: &'a mut Option<WifiProvisioner>,
+}
+
 fn handle_command<C, W>(
     runtime: &mut NetworkRuntime<C>,
-    wifi: &mut dyn WifiController,
-    pending_wifi_change: &mut Option<PendingWifiChange>,
-    provisioning: &mut Option<WifiProvisioner>,
+    wifi_context: WifiCommandContext<'_>,
     bluetooth: &mut dyn BluetoothController,
     bluetooth_state: &mut BluetoothState,
     audio: &mut AudioManager,
@@ -708,6 +723,11 @@ where
     C: ModemController,
     W: Write,
 {
+    let WifiCommandContext {
+        wifi,
+        pending_wifi_change,
+        provisioning,
+    } = wifi_context;
     // While the hotspot/onboarding flow owns the radio, station-mode Wi-Fi
     // commands would fight it; reject them until it stops.
     if provisioning.is_some()
@@ -1770,12 +1790,14 @@ mod tests {
             rx,
             &mut output,
             Duration::from_millis(1),
-            Box::new(FakeWifiController {
-                state: fake_state(),
-                fail_scan: false,
-                pending_change: false,
-            }),
-            Box::new(UnavailableBluetoothController),
+            WirelessControllers {
+                wifi: Box::new(FakeWifiController {
+                    state: fake_state(),
+                    fail_scan: false,
+                    pending_change: false,
+                }),
+                bluetooth: Box::new(UnavailableBluetoothController),
+            },
             AudioManager::open(config_dir.path().to_str().unwrap()),
             Some(GsmWorker::with_backend(RecordingGsmBackend(calls.clone()))),
         )
@@ -2477,8 +2499,10 @@ mod tests {
             rx,
             &mut output,
             Duration::from_millis(1),
-            Box::new(UnavailableWifiController),
-            Box::new(UnavailableBluetoothController),
+            WirelessControllers {
+                wifi: Box::new(UnavailableWifiController),
+                bluetooth: Box::new(UnavailableBluetoothController),
+            },
             AudioManager::open(config_dir.path().to_str().unwrap()),
             None,
         )

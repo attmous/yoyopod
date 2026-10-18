@@ -194,7 +194,6 @@ fn validate_role_coverage<'a>(
     let missing = required
         .iter()
         .copied()
-        .into_iter()
         .filter(|role| !roles.contains(role))
         .collect::<Vec<_>>();
     if !missing.is_empty() {

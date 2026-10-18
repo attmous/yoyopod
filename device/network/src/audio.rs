@@ -557,9 +557,7 @@ impl AudioManager {
         let applied = AppliedAudio {
             state: AudioState {
                 schema_version: 1,
-                status: if bluetooth_state.status == "unavailable" {
-                    "degraded"
-                } else if fallback {
+                status: if bluetooth_state.status == "unavailable" || fallback {
                     "degraded"
                 } else {
                     "ready"

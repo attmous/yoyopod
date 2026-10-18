@@ -249,7 +249,7 @@ fn companion_items(snapshot: &RuntimeSnapshot) -> Vec<WheelItemModel> {
                 } else {
                     ""
                 },
-                &format!("setup_{}", name.to_ascii_lowercase()),
+                format!("setup_{}", name.to_ascii_lowercase()),
                 companion_color(name),
                 true,
             )

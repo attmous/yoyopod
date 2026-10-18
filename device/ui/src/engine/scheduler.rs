@@ -49,9 +49,8 @@ impl Engine {
             self.tree_cache.previous(),
             self.tree_cache.ids(),
             &new_tree,
-            graph.active.stage,
+            (graph.active.stage, &sampler),
             &mut self.node_alloc,
-            &sampler,
             &mut self.mutations,
         );
         self.tree_cache.replace(new_tree, next_ids);

@@ -192,10 +192,8 @@ where
         };
 
         let outcome = dispatcher::dispatch_command(command);
-        if matches!(outcome.event, dispatcher::AppEvent::Tick) {
-            if watchdog.note_tick() {
-                ui_runtime.mark_runtime_connected();
-            }
+        if matches!(outcome.event, dispatcher::AppEvent::Tick) && watchdog.note_tick() {
+            ui_runtime.mark_runtime_connected();
         }
         let mut context = AppEventContext {
             output,

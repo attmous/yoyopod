@@ -43,12 +43,11 @@ pub fn chrome_for_screen(
         deck: DeckBarProps {
             focused_index: deck_focus_for_screen(screen, home_focus),
             visible: deck_visible,
-            opacity: if matches!(
-                screen,
-                UiScreen::IncomingCall | UiScreen::OutgoingCall | UiScreen::InCall
-            ) {
-                140
-            } else if capture_dimmed {
+            opacity: if capture_dimmed
+                || matches!(
+                    screen,
+                    UiScreen::IncomingCall | UiScreen::OutgoingCall | UiScreen::InCall
+                ) {
                 140
             } else {
                 255
