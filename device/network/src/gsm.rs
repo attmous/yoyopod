@@ -247,6 +247,7 @@ impl GsmWorker {
                 // Observe removal before dispatch, including commands accepted while a
                 // previous bounded native request was waiting for its response.
                 let preflight = backend.refresh_observation();
+                let preflight_epoch = backend.selected_modem_epoch();
                 thread_epoch.store(backend.selected_modem_epoch(), Ordering::SeqCst);
                 if let Some(generation) = backend.take_modem_loss() {
                     let _ = send_events.send(GsmEvent::ModemLost { generation });
@@ -380,9 +381,10 @@ impl GsmWorker {
                     Err(mpsc::RecvTimeoutError::Timeout) => Ok(()),
                 };
                 let mut refresh_ok = true;
+                let mut preflight_calls = Vec::new();
                 let mut call_events = Vec::new();
                 if let Ok(observation) = preflight {
-                    call_events.extend(observation.calls);
+                    preflight_calls.extend(observation.calls);
                 }
                 let mut state = match backend.refresh_observation() {
                     Ok(observation) => {
@@ -399,6 +401,12 @@ impl GsmWorker {
                     }
                 };
                 call_events.extend(backend.drain_call_events());
+                if backend.selected_modem_epoch() != preflight_epoch {
+                    preflight_calls.retain(|event|!matches!(event,CallManagerWireEvent::Update(update)
+                        if matches!(update.phase,CallPhase::Active | CallPhase::Held | CallPhase::Outgoing)));
+                }
+                preflight_calls.extend(call_events);
+                let call_events = preflight_calls;
                 thread_epoch.store(backend.selected_modem_epoch(), Ordering::SeqCst);
                 if let Some(generation) = backend.take_modem_loss() {
                     let _ = send_events.send(GsmEvent::ModemLost { generation });
@@ -599,7 +607,10 @@ impl ModemSignals {
                 };
                 #[cfg(test)]
                 if relevant
-                    && message.header().member().map(|m| m.as_str()) == Some("InterfacesRemoved")
+                    && matches!(
+                        message.header().member().map(|m| m.as_str()),
+                        Some("InterfacesRemoved" | "PropertiesChanged" | "StateChanged")
+                    )
                 {
                     let gate = thread_pause.lock().unwrap().take();
                     if let Some((entered, release)) = gate {
@@ -707,6 +718,47 @@ struct ModemManagerVoice {
 }
 
 impl ModemManagerVoice {
+    fn audio_key(&self) -> Option<&SessionKey> {
+        self.owner
+            .as_ref()
+            .or_else(|| self.format_admission.as_ref().map(|(key, _, _)| key))
+    }
+
+    fn call_format_lost(&mut self, path: &str) {
+        if self
+            .audio_key()
+            .and_then(|key| self.registry.as_ref()?.path_for(key))
+            == Some(path)
+        {
+            self.invalidate_provider_audio();
+            return;
+        }
+        // An unowned Call cannot invalidate another session's audio proof.
+        // Keep this exact key/path in Ending even if its dictionary recovers.
+        let Some(key) = self.registry.as_ref().and_then(|r| {
+            r.tracked()
+                .into_iter()
+                .find(|(p, _)| p == path)
+                .map(|(_, k)| k)
+        }) else {
+            return;
+        };
+        self.cleanup.failed(path);
+        self.terminating.insert(path.into());
+        self.pending_events.retain(|event|!matches!(event,CallManagerWireEvent::Update(update)
+            if update.key == key && matches!(update.phase,CallPhase::Active | CallPhase::Held | CallPhase::Outgoing)));
+        if let Some(registry) = self.registry.as_mut() {
+            if let Some(old) = registry.latest(&key).cloned() {
+                self.pending_events.extend(registry.observe(
+                    path,
+                    old.direction,
+                    CallPhase::Ending,
+                    &old.address,
+                ));
+            }
+        }
+    }
+
     fn invalidate_provider_audio(&mut self) {
         if self.provider_invalidated || self.modem_lost || self.service_invalidated {
             return;
@@ -725,6 +777,10 @@ impl ModemManagerVoice {
         self.audio_deadline = None;
         self.cached.available = false;
         self.cached.unavailable_reason = "Audio unavailable".into();
+        self.pending_events.retain(|event| {
+            !matches!(event,CallManagerWireEvent::Update(update)
+            if matches!(update.phase,CallPhase::Active | CallPhase::Held | CallPhase::Outgoing))
+        });
         // The same signaling objects remain usable for targeted termination.
         // Neither recovered metadata nor stopped local PCM proves native release.
         if let Some(registry) = self.registry.as_mut() {
@@ -848,14 +904,12 @@ impl ModemManagerVoice {
             if path == modem.as_deref()
                 && header.interface().map(|i| i.as_str()) == Some(MODEM_INTERFACE)
                 && header.member().map(|m| m.as_str()) == Some("StateChanged")
-            {
-                if message
+                && message
                     .body()
                     .deserialize::<(i32, i32, u32)>()
                     .map_or(true, |(old, new, _)| old < 6 || new < 6)
-                {
-                    self.invalidate_provider_audio();
-                }
+            {
+                self.invalidate_provider_audio();
             }
             if header.interface().map(|i| i.as_str()) == Some("org.freedesktop.DBus.Properties")
                 && header.member().map(|m| m.as_str()) == Some("PropertiesChanged")
@@ -923,7 +977,12 @@ impl ModemManagerVoice {
                                         )
                                     })
                             }));
-                    if modem_loss || format_loss || port_loss || inventory_loss {
+                    if format_loss {
+                        if let Some(path) = path {
+                            self.call_format_lost(path);
+                        }
+                    }
+                    if modem_loss || port_loss || inventory_loss {
                         self.invalidate_provider_audio();
                     }
                 } else if path == modem.as_deref()
@@ -1412,6 +1471,10 @@ impl ModemManagerVoice {
         self.verify_service_owner()?;
         let reason = voice_service_unavailable_reason(state, lock, true, emergency);
         self.check_selected_modem()?;
+        if reason.is_some() && (self.provider_identity.is_some() || self.format_admission.is_some())
+        {
+            self.invalidate_provider_audio();
+        }
         self.cached.available = reason.is_none();
         self.cached.unavailable_reason = if reason.is_some() {
             "Modem unavailable"
@@ -1421,13 +1484,17 @@ impl ModemManagerVoice {
         .into();
         if self.cached.available {
             let provider_ready = self.provider_baseline().and_then(|_| {
-                for (path, key) in self.registry()?.tracked() {
-                    if self
-                        .registry()?
-                        .latest(&key)
-                        .is_some_and(|u| u.phase == CallPhase::Ringing)
-                    {
-                        self.sample_rate(&path)?;
+                if let Some(key) = self.audio_key().cloned() {
+                    self.sample_rate(&self.path_for(&key)?)?;
+                } else {
+                    for (path, key) in self.registry()?.tracked() {
+                        if self
+                            .registry()?
+                            .latest(&key)
+                            .is_some_and(|u| u.phase == CallPhase::Ringing)
+                        {
+                            self.sample_rate(&path)?;
+                        }
                     }
                 }
                 Ok(())
@@ -1452,6 +1519,8 @@ impl ModemManagerVoice {
         if self.owner.as_ref() == Some(key) {
             self.audio.take();
             self.prepared_audio.take();
+            self.format_admission = None;
+            self.owned_audio_port = None;
             self.audio_deadline = None;
         }
         let result = self.proxy_for(&path)?.call::<_, _, ()>("Hangup", &());
@@ -1641,14 +1710,27 @@ impl ModemManagerVoice {
             Proxy::new(&connection, owner.as_str(), modem.as_str(), VOICE_INTERFACE)?
                 .get_property("EmergencyOnly")?;
         self.ensure_control()?;
-        anyhow::ensure!(
-            voice_service_unavailable_reason(state, lock, true, emergency).is_none(),
-            "Modem unavailable"
-        );
+        if voice_service_unavailable_reason(state, lock, true, emergency).is_some() {
+            self.invalidate_provider_audio();
+            self.cached.unavailable_reason = "Modem unavailable".into();
+            bail!("Modem unavailable");
+        }
         let epoch = self.selected_epoch;
         let actual = self.provider_baseline()?;
         let format: HashMap<String, zvariant::OwnedValue> =
-            self.proxy_for(path)?.get_property("AudioFormat")?;
+            match self.proxy_for(path)?.get_property("AudioFormat") {
+                Ok(format) => format,
+                Err(error) => {
+                    if self
+                        .audio_key()
+                        .and_then(|key| self.registry.as_ref()?.path_for(key))
+                        == Some(path)
+                    {
+                        self.invalidate_provider_audio();
+                    }
+                    return Err(error.into());
+                }
+            };
         self.ensure_control()?;
         anyhow::ensure!(
             epoch == self.selected_epoch && !self.provider_invalidated,
@@ -1657,9 +1739,7 @@ impl ModemManagerVoice {
         match self.provider.format(&actual, &format) {
             Ok(pcm) => Ok(pcm.sample_rate_hz()),
             Err(error) => {
-                if self.format_admission.is_some() {
-                    self.invalidate_provider_audio();
-                }
+                self.call_format_lost(path);
                 Err(error)
             }
         }
@@ -1725,6 +1805,10 @@ impl ModemManagerVoice {
         self.audio = Some(UsbPcmAudio::start(
             self.prepared_audio.take().expect("prepared"),
         )?);
+        if let Err(error) = self.ensure_prepared_current(key, path) {
+            self.invalidate_provider_audio();
+            return Err(error);
+        }
         Ok(())
     }
 }
@@ -2511,6 +2595,8 @@ mod tests {
 
     struct LifecycleCall {
         rate: Arc<std::sync::atomic::AtomicU32>,
+        controls: Arc<std::sync::atomic::AtomicUsize>,
+        hangup_gate: PropertyGate,
     }
     #[zbus::interface(name = "org.freedesktop.ModemManager1.Call")]
     impl LifecycleCall {
@@ -2548,11 +2634,40 @@ mod tests {
         fn audio_port(&self) -> &str {
             ""
         }
+        fn accept(&self) {
+            self.controls.fetch_add(1, Ordering::SeqCst);
+        }
+        fn start(&self) {
+            self.controls.fetch_add(1, Ordering::SeqCst);
+        }
+        async fn hangup(&self) -> zbus::fdo::Result<()> {
+            let gate = self.hangup_gate.lock().unwrap().take();
+            if let Some((entered, release)) = gate {
+                entered.send(()).unwrap();
+                let deadline = Instant::now() + Duration::from_secs(3);
+                loop {
+                    match release.try_recv() {
+                        Ok(()) => break,
+                        Err(mpsc::TryRecvError::Empty) if Instant::now() < deadline => {
+                            async_io::Timer::after(Duration::from_millis(5)).await
+                        }
+                        _ => {
+                            return Err(zbus::fdo::Error::Failed(
+                                "fixture Hangup gate expired".into(),
+                            ))
+                        }
+                    }
+                }
+            }
+            Ok(())
+        }
     }
     struct LifecycleFixture {
         owner: Connection,
         backend: ModemManagerVoice,
         rate: Arc<std::sync::atomic::AtomicU32>,
+        controls: Arc<std::sync::atomic::AtomicUsize>,
+        hangup_gate: PropertyGate,
         _bus: PrivateBus,
     }
     impl LifecycleFixture {
@@ -2560,9 +2675,18 @@ mod tests {
             let bus = PrivateBus::start();
             let (owner, mut backend, _) = reconnect_fixture(&bus);
             let rate = Arc::new(std::sync::atomic::AtomicU32::new(16000));
+            let controls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+            let hangup_gate = Arc::new(Mutex::new(None));
             owner
                 .object_server()
-                .at(TEST_RINGING_CALL, LifecycleCall { rate: rate.clone() })
+                .at(
+                    TEST_RINGING_CALL,
+                    LifecycleCall {
+                        rate: rate.clone(),
+                        controls: controls.clone(),
+                        hangup_gate: hangup_gate.clone(),
+                    },
+                )
                 .unwrap();
             owner
                 .object_server()
@@ -2579,6 +2703,8 @@ mod tests {
                 owner,
                 backend,
                 rate,
+                controls,
+                hangup_gate,
                 _bus: bus,
             }
         }
@@ -2613,6 +2739,8 @@ mod tests {
             self.rate.store(rate.unwrap_or(0), Ordering::SeqCst);
             let format = LifecycleCall {
                 rate: self.rate.clone(),
+                controls: self.controls.clone(),
+                hangup_gate: self.hangup_gate.clone(),
             }
             .audio_format();
             self.owner
@@ -2640,6 +2768,49 @@ mod tests {
                 && self.backend.provider_baseline().is_ok()
                 && self.backend.selected_modem_epoch() == epoch
         }
+        fn add_call(&mut self, path: &str, rate: u32) -> SessionKey {
+            self.owner
+                .object_server()
+                .at(
+                    path,
+                    LifecycleCall {
+                        rate: Arc::new(std::sync::atomic::AtomicU32::new(rate)),
+                        controls: self.controls.clone(),
+                        hangup_gate: Arc::new(Mutex::new(None)),
+                    },
+                )
+                .unwrap();
+            self.owner
+                .object_server()
+                .interface::<_, ReconnectVoice>(TEST_MODEM0)
+                .unwrap()
+                .get()
+                .paths
+                .lock()
+                .unwrap()
+                .push(OwnedObjectPath::try_from(path).unwrap());
+            self.backend.reconcile_paths().unwrap();
+            self.backend
+                .registry()
+                .unwrap()
+                .tracked()
+                .into_iter()
+                .find(|(p, _)| p == path)
+                .unwrap()
+                .1
+        }
+        fn remove_call(&mut self, path: &str) {
+            self.owner
+                .object_server()
+                .interface::<_, ReconnectVoice>(TEST_MODEM0)
+                .unwrap()
+                .get()
+                .paths
+                .lock()
+                .unwrap()
+                .retain(|p| p.as_str() != path);
+            self.backend.reconcile_paths().unwrap();
+        }
     }
     #[test]
     fn gsm_provider_same_owner_path_reenable_does_not_restore_old_admission() {
@@ -2663,6 +2834,519 @@ mod tests {
                 .unwrap()
                 .native_calls_quiescent
         );
+    }
+
+    fn lifecycle_properties(
+        owner: &Connection,
+        path: &str,
+        interface: &str,
+        changed: HashMap<&str, zvariant::OwnedValue>,
+        invalidated: Vec<&str>,
+    ) {
+        owner
+            .emit_signal(
+                None::<&str>,
+                path,
+                "org.freedesktop.DBus.Properties",
+                "PropertiesChanged",
+                &(interface, changed, invalidated),
+            )
+            .unwrap();
+    }
+
+    #[test]
+    fn gsm_provider_each_observable_lifecycle_payload_invalidates_once_and_retains_dirty_key() {
+        use yoyopod_protocol::call::CallAction;
+        for case in 0..11 {
+            let mut f = LifecycleFixture::new_qualified();
+            let old = f.epoch();
+            assert_eq!(f.backend.sample_rate(TEST_RINGING_CALL).unwrap(), 16000);
+            let key = f.backend.registry().unwrap().tracked()[0].1.clone();
+            if case >= 4 {
+                f.backend.owner = Some(key.clone());
+                f.backend.format_admission = Some((key.clone(), old, 16000));
+                f.backend.owned_audio_port = Some("/dev/ttyUSB9".into());
+            }
+            match case {
+                0 => f
+                    .owner
+                    .emit_signal(
+                        None::<&str>,
+                        TEST_MODEM0,
+                        MODEM_INTERFACE,
+                        "StateChanged",
+                        &(8i32, 4i32, 0u32),
+                    )
+                    .unwrap(),
+                1 => lifecycle_properties(
+                    &f.owner,
+                    TEST_MODEM0,
+                    MODEM_INTERFACE,
+                    HashMap::new(),
+                    vec!["State"],
+                ),
+                2 => lifecycle_properties(
+                    &f.owner,
+                    TEST_MODEM0,
+                    VOICE_INTERFACE,
+                    HashMap::from([("EmergencyOnly", true.into())]),
+                    vec![],
+                ),
+                3 => lifecycle_properties(
+                    &f.owner,
+                    TEST_MODEM0,
+                    VOICE_INTERFACE,
+                    HashMap::new(),
+                    vec!["EmergencyOnly"],
+                ),
+                4 => lifecycle_properties(
+                    &f.owner,
+                    TEST_RINGING_CALL,
+                    CALL_INTERFACE,
+                    HashMap::new(),
+                    vec!["AudioFormat"],
+                ),
+                5 => {
+                    f.emit_call_format(Some(8000));
+                    f.emit_call_format(Some(16000));
+                }
+                6 => lifecycle_properties(
+                    &f.owner,
+                    TEST_RINGING_CALL,
+                    CALL_INTERFACE,
+                    HashMap::from([("AudioFormat", zvariant::Str::from("wrong-type").into())]),
+                    vec![],
+                ),
+                7 => lifecycle_properties(
+                    &f.owner,
+                    TEST_RINGING_CALL,
+                    CALL_INTERFACE,
+                    HashMap::new(),
+                    vec!["AudioPort"],
+                ),
+                8 => lifecycle_properties(
+                    &f.owner,
+                    TEST_RINGING_CALL,
+                    CALL_INTERFACE,
+                    HashMap::from([("AudioPort", zvariant::Str::from("/dev/ttyUSB17").into())]),
+                    vec![],
+                ),
+                9 => lifecycle_properties(
+                    &f.owner,
+                    TEST_MODEM0,
+                    MODEM_INTERFACE,
+                    HashMap::new(),
+                    vec!["Ports"],
+                ),
+                10 => lifecycle_properties(
+                    &f.owner,
+                    TEST_MODEM0,
+                    MODEM_INTERFACE,
+                    HashMap::from([(
+                        "Ports",
+                        zvariant::OwnedValue::try_from(zvariant::Value::from(vec![(
+                            "cdc-wdm0", 6u32,
+                        )]))
+                        .unwrap(),
+                    )]),
+                    vec![],
+                ),
+                _ => unreachable!(),
+            }
+            f.flush_through_reply().unwrap();
+            assert_eq!(f.epoch(), old + 1, "case {case}");
+            assert!(f.backend.format_admission.is_none());
+            assert!(!f.old_epoch_can_control(old));
+            f.emit_call_format(None);
+            f.emit_call_format(Some(16000));
+            f.flush_through_reply().unwrap();
+            assert_eq!(f.epoch(), old + 1, "repeated invalidation case {case}");
+            assert_eq!(
+                f.backend.registry().unwrap().path_for(&key),
+                Some(TEST_RINGING_CALL)
+            );
+            assert_eq!(
+                f.backend.registry().unwrap().latest(&key).unwrap().phase,
+                CallPhase::Ending
+            );
+            assert!(!f.backend.reconciliation().unwrap().native_calls_quiescent);
+            f.backend
+                .apply_call(&CallCommand {
+                    key: key.clone(),
+                    action: CallAction::Reject(yoyopod_protocol::call::RejectReason::Cancelled),
+                })
+                .unwrap();
+            if case >= 4 {
+                assert!(f.backend.owns_voice(&key));
+            }
+            assert_eq!(f.controls.load(Ordering::SeqCst), 0);
+        }
+    }
+
+    #[test]
+    fn gsm_provider_empty_port_and_normal_cleanup_preserve_idle_baseline_and_clean_reset_recovers()
+    {
+        let mut f = LifecycleFixture::new_qualified();
+        let old = f.epoch();
+        lifecycle_properties(
+            &f.owner,
+            TEST_RINGING_CALL,
+            CALL_INTERFACE,
+            HashMap::from([("AudioPort", zvariant::Str::from("").into())]),
+            vec![],
+        );
+        f.flush_through_reply().unwrap();
+        assert_eq!(f.epoch(), old);
+        assert!(f.old_epoch_can_control(old));
+        f.owner
+            .object_server()
+            .interface::<_, ReconnectVoice>(TEST_MODEM0)
+            .unwrap()
+            .get()
+            .paths
+            .lock()
+            .unwrap()
+            .clear();
+        f.backend.reconcile_paths().unwrap();
+        f.backend.refresh_availability().unwrap();
+        assert!(f.backend.cached.available);
+        assert!(f.backend.registry().unwrap().tracked().is_empty());
+        assert!(f.backend.reconciliation().unwrap().native_calls_quiescent);
+        assert!(f
+            .backend
+            .pending_events
+            .iter()
+            .any(|e| matches!(e,CallManagerWireEvent::Update(u) if u.phase==CallPhase::Ended)));
+        f.emit_modem_state(4);
+        f.emit_modem_state(8);
+        f.flush_through_reply().unwrap();
+        assert_eq!(f.epoch(), old + 1);
+        assert!(
+            f.backend
+                .pending_events
+                .iter()
+                .any(|e| matches!(e,CallManagerWireEvent::Update(u) if u.phase==CallPhase::Ended)),
+            "real terminal proof was discarded"
+        );
+        f.backend.next_recovery = None;
+        f.refresh().unwrap();
+        assert!(f.backend.cached.available);
+        assert!(f.backend.provider_baseline().is_ok());
+        assert!(f.backend.reconciliation().unwrap().native_calls_quiescent);
+    }
+
+    #[test]
+    fn gsm_provider_pending_baseline_and_call_metadata_never_dispatch_control() {
+        let mut f = LifecycleFixture::new_qualified();
+        f.backend.provider = crate::gsm_provider::ProviderGate::default();
+        f.backend.provider_identity = None;
+        f.backend.refresh_availability().unwrap();
+        assert!(!f.backend.cached.available);
+        assert_eq!(f.backend.cached.unavailable_reason, "Audio unavailable");
+        let key = f.backend.registry().unwrap().tracked()[0].1.clone();
+        assert!(f
+            .backend
+            .apply_call(&CallCommand {
+                key,
+                action: yoyopod_protocol::call::CallAction::Answer
+            })
+            .is_err());
+        assert_eq!(f.controls.load(Ordering::SeqCst), 0);
+        let bus = PrivateBus::start();
+        let (_owner, mut backend, _) = reconnect_fixture(&bus);
+        backend.provider = crate::gsm_provider::ProviderGate::default();
+        backend.provider_identity = None;
+        let key = SessionKey {
+            transport: yoyopod_protocol::call::CallTransport::Gsm,
+            generation: 7,
+            call_id: "runtime-outgoing-99".into(),
+        };
+        assert!(backend.dial_session(&key, "+49123456789").is_err());
+        assert!(backend.owner.is_none());
+        assert!(backend.registry().unwrap().tracked().is_empty());
+    }
+
+    #[test]
+    fn gsm_provider_buffered_active_is_removed_but_terminal_facts_survive_invalidation() {
+        let mut f = LifecycleFixture::new_qualified();
+        let key = f.backend.registry().unwrap().tracked()[0].1.clone();
+        let updates = f.backend.registry.as_mut().unwrap().observe(
+            TEST_RINGING_CALL,
+            yoyopod_protocol::call::CallDirection::Incoming,
+            CallPhase::Active,
+            "+49123456789",
+        );
+        f.backend.pending_events.extend(updates);
+        f.emit_modem_state(4);
+        f.emit_modem_state(8);
+        f.flush_through_reply().unwrap();
+        assert!(!f.backend.pending_events.iter().any(|e|matches!(e,CallManagerWireEvent::Update(u) if matches!(u.phase,CallPhase::Active|CallPhase::Held|CallPhase::Outgoing))));
+        assert_eq!(
+            f.backend.registry().unwrap().latest(&key).unwrap().phase,
+            CallPhase::Ending
+        );
+    }
+
+    #[test]
+    fn gsm_provider_secondary_signal_and_fresh_read_never_invalidate_primary_proof() {
+        const SECONDARY: &str = "/org/freedesktop/ModemManager1/Call/43";
+        for signal in [false, true] {
+            let mut f = LifecycleFixture::new_qualified();
+            let old = f.epoch();
+            let primary = f.backend.registry().unwrap().tracked()[0].1.clone();
+            f.backend.owner = Some(primary.clone());
+            f.backend.format_admission = Some((primary.clone(), old, 16000));
+            let secondary = f.add_call(SECONDARY, 8000);
+            // The primary is authoritative; merely reading availability must not
+            // read/reject the secondary dictionary or replace its PCM proof.
+            f.backend.refresh_availability().unwrap();
+            assert!(f.backend.cached.available);
+            if signal {
+                lifecycle_properties(
+                    &f.owner,
+                    SECONDARY,
+                    CALL_INTERFACE,
+                    HashMap::new(),
+                    vec!["AudioFormat"],
+                );
+                f.flush_through_reply().unwrap();
+            } else {
+                assert!(f.backend.sample_rate(SECONDARY).is_err());
+            }
+            assert_eq!(f.epoch(), old);
+            assert_eq!(
+                f.backend.format_admission,
+                Some((primary.clone(), old, 16000))
+            );
+            assert!(f.backend.owns_voice(&primary));
+            assert_eq!(
+                f.backend
+                    .registry()
+                    .unwrap()
+                    .latest(&primary)
+                    .unwrap()
+                    .phase,
+                CallPhase::Ringing
+            );
+            assert_eq!(
+                f.backend
+                    .registry()
+                    .unwrap()
+                    .latest(&secondary)
+                    .unwrap()
+                    .phase,
+                CallPhase::Ending
+            );
+            f.backend
+                .apply_call(&CallCommand {
+                    key: secondary,
+                    action: yoyopod_protocol::call::CallAction::Reject(
+                        yoyopod_protocol::call::RejectReason::Busy,
+                    ),
+                })
+                .unwrap();
+            assert_eq!(
+                f.backend.format_admission,
+                Some((primary.clone(), old, 16000))
+            );
+            f.remove_call(SECONDARY);
+            f.backend.refresh_availability().unwrap();
+            assert!(f.backend.cached.available);
+            assert_eq!(f.backend.sample_rate(TEST_RINGING_CALL).unwrap(), 16000);
+            assert_eq!(f.epoch(), old);
+        }
+    }
+
+    #[test]
+    fn gsm_provider_unowned_invalid_key_stays_ending_after_format_restore() {
+        const SECONDARY: &str = "/org/freedesktop/ModemManager1/Call/43";
+        let mut f = LifecycleFixture::new_qualified();
+        let old = f.epoch();
+        let primary = f.backend.registry().unwrap().tracked()[0].1.clone();
+        let secondary = f.add_call(SECONDARY, 16000);
+        lifecycle_properties(
+            &f.owner,
+            SECONDARY,
+            CALL_INTERFACE,
+            HashMap::new(),
+            vec!["AudioFormat"],
+        );
+        f.flush_through_reply().unwrap();
+        f.backend.observe_path(SECONDARY).unwrap();
+        assert_eq!(f.epoch(), old);
+        assert_eq!(
+            f.backend
+                .registry()
+                .unwrap()
+                .latest(&secondary)
+                .unwrap()
+                .phase,
+            CallPhase::Ending
+        );
+        assert_eq!(
+            f.backend
+                .registry()
+                .unwrap()
+                .latest(&primary)
+                .unwrap()
+                .phase,
+            CallPhase::Ringing
+        );
+        assert_eq!(f.backend.sample_rate(TEST_RINGING_CALL).unwrap(), 16000);
+        assert!(f
+            .backend
+            .apply_call(&CallCommand {
+                key: secondary.clone(),
+                action: yoyopod_protocol::call::CallAction::Answer
+            })
+            .is_err());
+        assert_eq!(f.controls.load(Ordering::SeqCst), 0);
+        assert!(f.backend.registry().unwrap().path_for(&secondary).is_some());
+        f.remove_call(SECONDARY);
+        f.backend.refresh_availability().unwrap();
+        assert!(f.backend.cached.available);
+        assert_eq!(
+            f.backend
+                .registry()
+                .unwrap()
+                .latest(&primary)
+                .unwrap()
+                .phase,
+            CallPhase::Ringing
+        );
+        assert_eq!(f.epoch(), old);
+    }
+
+    #[test]
+    fn gsm_provider_real_hangup_reset_fences_preflight_buffer_before_publication() {
+        const SECONDARY: &str = "/org/freedesktop/ModemManager1/Call/43";
+        let mut f = LifecycleFixture::new_qualified();
+        let old = f.epoch();
+        let key = f.backend.registry().unwrap().tracked()[0].1.clone();
+        let terminal_key = f.add_call(SECONDARY, 16000);
+        f.remove_call(SECONDARY); // real Calls scan produces trusted Ended proof
+        let mut buffered = f.backend.registry().unwrap().latest(&key).unwrap().clone();
+        buffered.phase = CallPhase::Active;
+        // Seed an earlier audio observation only; PCM startup belongs to Task 5.
+        f.backend
+            .pending_events
+            .push(CallManagerWireEvent::Update(buffered));
+        let (entered, entering) = mpsc::channel();
+        let (release, releasing) = mpsc::channel();
+        *f.hangup_gate.lock().unwrap() = Some((entered, releasing));
+        let worker = GsmWorker::with_backend(f.backend);
+        worker
+            .send_at_epoch(
+                GsmCommand::Action {
+                    request_id: "hangup-reset".into(),
+                    command: CallCommand {
+                        key: key.clone(),
+                        action: yoyopod_protocol::call::CallAction::Hangup,
+                    },
+                },
+                old,
+            )
+            .unwrap();
+        entering.recv_timeout(Duration::from_secs(3)).unwrap();
+        for state in [4i32, 8i32] {
+            f.owner
+                .emit_signal(
+                    None::<&str>,
+                    TEST_MODEM0,
+                    MODEM_INTERFACE,
+                    "StateChanged",
+                    &(8i32, state, 0u32),
+                )
+                .unwrap();
+        }
+        release.send(()).unwrap();
+        let mut events = Vec::new();
+        loop {
+            let event = worker.events.recv_timeout(Duration::from_secs(5)).unwrap();
+            let done =
+                matches!(&event,GsmEvent::Completed {request_id,..} if request_id=="hangup-reset");
+            events.push(event);
+            if done {
+                break;
+            }
+        }
+        assert!(!events.iter().any(|e|matches!(e,GsmEvent::Call(CallManagerWireEvent::Update(u)) if matches!(u.phase,CallPhase::Active|CallPhase::Held|CallPhase::Outgoing))));
+        assert!(events.iter().any(|e|matches!(e,GsmEvent::Call(CallManagerWireEvent::Update(u)) if u.key==terminal_key && u.phase==CallPhase::Ended)));
+        assert!(events.iter().any(
+            |e| matches!(e,GsmEvent::Call(CallManagerWireEvent::Offer(o)) if o.key==terminal_key)
+        ));
+        let lost = events
+            .iter()
+            .position(|e| matches!(e, GsmEvent::ModemLost { .. }))
+            .unwrap();
+        let reconciled = events
+            .iter()
+            .position(|e| matches!(e,GsmEvent::Reconciled(r) if r.admission_epoch>old))
+            .unwrap();
+        let ending=events.iter().position(|e|matches!(e,GsmEvent::Call(CallManagerWireEvent::Update(u)) if u.key==key && u.phase==CallPhase::Ending)).unwrap();
+        assert!(lost < reconciled && reconciled < ending && ending < events.len() - 1);
+        drop(worker);
+    }
+
+    #[test]
+    fn gsm_provider_held_real_collector_fences_queued_old_dial_and_answer() {
+        let mut f = LifecycleFixture::new_qualified();
+        let old = f.epoch();
+        let key = f.backend.registry().unwrap().tracked()[0].1.clone();
+        let (entered, entering) = mpsc::channel();
+        let (release, releasing) = mpsc::channel();
+        *f.backend
+            .signals
+            .as_ref()
+            .unwrap()
+            .pause_before_forward
+            .lock()
+            .unwrap() = Some((entered, releasing));
+        f.emit_modem_state(4);
+        entering.recv_timeout(Duration::from_secs(3)).unwrap();
+        f.emit_call_format(None);
+        f.emit_modem_state(8);
+        f.emit_call_format(Some(16000));
+        let controls = f.controls.clone();
+        let worker = GsmWorker::with_backend(f.backend);
+        worker
+            .send_at_epoch(
+                GsmCommand::Action {
+                    request_id: "old-answer".into(),
+                    command: CallCommand {
+                        key: key.clone(),
+                        action: yoyopod_protocol::call::CallAction::Answer,
+                    },
+                },
+                old,
+            )
+            .unwrap();
+        worker
+            .send_at_epoch(
+                GsmCommand::DialSession {
+                    request_id: "old-dial".into(),
+                    key: key.clone(),
+                    number: "+49123456789".into(),
+                },
+                old,
+            )
+            .unwrap();
+        release.send(()).unwrap();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let mut completed = std::collections::HashSet::new();
+        while completed.len() < 2 && Instant::now() < deadline {
+            if let GsmEvent::Completed {
+                request_id, error, ..
+            } = worker.events.recv_timeout(Duration::from_secs(3)).unwrap()
+            {
+                assert!(error.unwrap().contains("command fenced"));
+                completed.insert(request_id);
+            }
+        }
+        assert_eq!(completed.len(), 2);
+        assert!(worker.selected_epoch.load(Ordering::SeqCst) > old);
+        assert_eq!(controls.load(Ordering::SeqCst), 0);
+        drop(worker);
     }
     fn add_reconnect_modem(owner: &Connection, path: &str) {
         owner.object_server().at(path, ReconnectModem).unwrap();

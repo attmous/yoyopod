@@ -714,6 +714,31 @@ fn gsm_provider_wrong_result_preserves_answer_then_matching_failure_stays_visibl
         "Call audio failed"
     );
     assert_eq!(runtime.state().call.session.as_ref(), Some(&key));
+    terminal(&mut runtime, &mut io, &key, 160);
+    release(&mut runtime, &mut io, &key, 170);
+    assert!(runtime.state().call.session.is_none());
+    io.messages.push((
+        WorkerDomain::Network,
+        WorkerEnvelope::event(
+            "gsm.call_state",
+            json!({"state":"incoming","available":false,"unavailable_reason":"Modem unavailable"}),
+        ),
+    ));
+    runtime.run_once_at(&mut io, 180);
+    let mut next = key.clone();
+    next.call_id = "runtime-outgoing-2".into();
+    offer(&mut runtime, &mut io, &next, 190);
+    assert_eq!(runtime.state().call.session.as_ref(), Some(&next));
+    assert_eq!(
+        runtime.state().call.gsm_unavailable_reason,
+        "Modem unavailable"
+    );
+    control(&mut runtime, &mut io, &key, CallAction::Answer, 200);
+    assert_eq!(
+        runtime.state().call.gsm_unavailable_reason,
+        "Modem unavailable"
+    );
+    assert_eq!(native_count(&io, "answer"), 1);
 }
 
 #[test]

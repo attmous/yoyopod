@@ -189,10 +189,12 @@ pub fn call_overlay_model(
                         key.transport == yoyopod_protocol::call::CallTransport::Gsm
                     }) =>
             {
-                if snapshot.call.gsm_unavailable_reason.trim().is_empty() {
-                    "Audio unavailable"
-                } else {
-                    snapshot.call.gsm_unavailable_reason.as_str()
+                match snapshot.call.gsm_unavailable_reason.as_str() {
+                    "Audio unavailable" => "Audio unavailable",
+                    "Modem unavailable" => "Modem unavailable",
+                    "Call audio failed" => "Call audio failed",
+                    reason if reason.trim().is_empty() => "Audio unavailable",
+                    _ => "Modem unavailable",
                 }
             }
             CallOverlayKind::Incoming
@@ -252,6 +254,38 @@ mod gsm_provider_tests {
     use yoyopod_protocol::call::{CallPhase, CallTransport, SessionKey};
 
     #[test]
+    fn gsm_provider_blocked_navigator_suppresses_answer_and_keeps_targeted_cancel() {
+        use yoyopod_protocol::call::{CallAction, CallCommand, RejectReason};
+        use yoyopod_protocol::ui::{CallIntent, InputAction, UiIntent};
+        let key = SessionKey {
+            transport: CallTransport::Gsm,
+            generation: 9,
+            call_id: "gsm-incoming-1".into(),
+        };
+        let mut runtime = crate::application::UiRuntime::default();
+        runtime.snapshot.call.state = "incoming".into();
+        runtime.snapshot.call.session = Some(key.clone());
+        runtime.snapshot.call.session_phase = Some(CallPhase::Ringing);
+        runtime.snapshot.call.gsm_available = false;
+        runtime.snapshot.call.gsm_unavailable_reason = "Audio unavailable".into();
+        runtime.snapshot.call.accept_enabled = false;
+        crate::application::navigator::apply_runtime_preemption(&mut runtime);
+        assert_eq!(runtime.focus_index, 0);
+        runtime.handle_input(InputAction::Select, 1);
+        assert!(runtime.take_intents().is_empty());
+        runtime.handle_input(InputAction::Advance, 2);
+        assert_eq!(runtime.focus_index, 1);
+        runtime.handle_input(InputAction::Select, 3);
+        assert_eq!(
+            runtime.take_intents(),
+            vec![UiIntent::Call(CallIntent::Session(CallCommand {
+                key,
+                action: CallAction::Reject(RejectReason::Cancelled)
+            }))]
+        );
+    }
+
+    #[test]
     fn gsm_provider_blocked_incoming_uses_existing_state_slot_and_focus() {
         let mut snapshot = yoyopod_protocol::ui::RuntimeSnapshot::default();
         snapshot.call.session = Some(SessionKey {
@@ -273,5 +307,16 @@ mod gsm_provider_tests {
                 1
             );
         }
+        snapshot.call.gsm_unavailable_reason =
+            "Selected modem lost; native reconciliation required".into();
+        assert_eq!(
+            call_overlay_model(&snapshot, CallOverlayKind::Incoming, 0).state,
+            "Modem unavailable"
+        );
+        snapshot.call.gsm_unavailable_reason.clear();
+        assert_eq!(
+            call_overlay_model(&snapshot, CallOverlayKind::Incoming, 0).state,
+            "Audio unavailable"
+        );
     }
 }

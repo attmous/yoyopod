@@ -1,6 +1,6 @@
 //! Admission evidence for the pinned ModemManager provider. No production defaults
 //! confer qualification; live Call metadata is required separately from idle identity.
-use anyhow::{bail, ensure, Context, Result};
+use anyhow::{ensure, Context, Result};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeSet, HashMap};
@@ -601,7 +601,7 @@ fn protected_bytes(path: &std::path::Path) -> Result<Vec<u8>> {
 }
 #[cfg(not(unix))]
 fn protected_bytes(_path: &std::path::Path) -> Result<Vec<u8>> {
-    bail!("Protected provider receipt requires Linux")
+    anyhow::bail!("Protected provider receipt requires Linux")
 }
 fn parse_start_ticks(stat: &str, pid: u32) -> Result<u64> {
     let (prefix, fields) = stat.rsplit_once(')').context("Malformed process stat")?;
@@ -634,11 +634,8 @@ fn dbus_identity(connection: &Connection, owner: &str) -> Result<(String, String
         bus.call("GetConnectionUnixProcessID", &(owner,))?,
     ))
 }
-fn read_modem(
-    connection: &Connection,
-    owner: &str,
-    modem: &str,
-) -> Result<(ModemFingerprint, String, Vec<(String, u32)>)> {
+type ModemIdentity = (ModemFingerprint, String, Vec<(String, u32)>);
+fn read_modem(connection: &Connection, owner: &str, modem: &str) -> Result<ModemIdentity> {
     let proxy: Proxy<'_> = zbus::blocking::proxy::Builder::new(connection)
         .destination(owner)?
         .path(modem)?
@@ -695,6 +692,63 @@ fn verified_receipt(
             running: current.clone(),
         },
     ))
+}
+
+fn read_installed_identity(
+    connection: &Connection,
+    owner: &str,
+    modem: &str,
+) -> Result<ProviderIdentity> {
+    read_identity_with_files(connection, owner, modem, &NormalAccountFiles)
+}
+fn read_identity_with_files(
+    connection: &Connection,
+    owner: &str,
+    modem: &str,
+    files: &dyn IdentityFiles,
+) -> Result<ProviderIdentity> {
+    let (bus_id, unique_owner, pid) = dbus_identity(connection, owner)?;
+    let (package_version, architecture) = files.package()?;
+    let process_start_ticks = files.start_ticks(pid)?;
+    let installed_executable_sha256 = files.executable_hash()?;
+    // Read attested running hash only from the protected receipt. It is never
+    // inferred from the installed filename or /proc/<pid>/exe.
+    let receipt: Receipt = serde_json::from_slice(&files.receipt_file("installed.json")?)?;
+    let current = RunningIdentity {
+        bus_id: bus_id.clone(),
+        unique_owner: unique_owner.clone(),
+        pid,
+        process_start_ticks,
+        package_version: package_version.clone(),
+        architecture: architecture.clone(),
+        installed_executable_sha256: installed_executable_sha256.clone(),
+        running_daemon_sha256: receipt.running_identity.running_daemon_sha256,
+    };
+    let (receipt_manifest_sha256, receipt) = verified_receipt(files, &current)?;
+    let identity = read_modem(connection, owner, modem)?;
+    ensure!(
+        dbus_identity(connection, owner)? == (bus_id.clone(), unique_owner.clone(), pid)
+            && files.start_ticks(pid)? == process_start_ticks
+            && files.package()? == (package_version.clone(), architecture.clone())
+            && files.executable_hash()? == installed_executable_sha256
+            && read_modem(connection, owner, modem)? == identity,
+        "Provider identity changed during read"
+    );
+    Ok(ProviderIdentity {
+        package_version,
+        architecture,
+        running_daemon_sha256: current.running_daemon_sha256,
+        modem: identity.0,
+        primary_port: identity.1,
+        ports: identity.2,
+        bus_id,
+        unique_owner,
+        pid,
+        process_start_ticks,
+        installed_executable_sha256,
+        receipt_manifest_sha256,
+        receipt,
+    })
 }
 
 #[cfg(test)]
@@ -892,7 +946,8 @@ pub(crate) mod gsm_provider_tests {
         let gate = ProviderGate::test_fixture();
         let expected = gate.expected.as_ref().unwrap();
         let original = ProviderIdentity::test_fixture(expected);
-        let mutations: Vec<Box<dyn Fn(&mut ProviderIdentity)>> = vec![
+        type IdentityMutation = Box<dyn Fn(&mut ProviderIdentity)>;
+        let mutations: Vec<IdentityMutation> = vec![
             Box::new(|i| i.modem.revision.push('x')),
             Box::new(|i| i.modem.hardware_revision.push('x')),
             Box::new(|i| i.modem.manufacturer.push('x')),
@@ -1180,60 +1235,4 @@ pub(crate) mod gsm_provider_tests {
             files.files.insert("installed.json".into(), original);
         }
     }
-}
-fn read_installed_identity(
-    connection: &Connection,
-    owner: &str,
-    modem: &str,
-) -> Result<ProviderIdentity> {
-    read_identity_with_files(connection, owner, modem, &NormalAccountFiles)
-}
-fn read_identity_with_files(
-    connection: &Connection,
-    owner: &str,
-    modem: &str,
-    files: &dyn IdentityFiles,
-) -> Result<ProviderIdentity> {
-    let (bus_id, unique_owner, pid) = dbus_identity(connection, owner)?;
-    let (package_version, architecture) = files.package()?;
-    let process_start_ticks = files.start_ticks(pid)?;
-    let installed_executable_sha256 = files.executable_hash()?;
-    // Read attested running hash only from the protected receipt. It is never
-    // inferred from the installed filename or /proc/<pid>/exe.
-    let receipt: Receipt = serde_json::from_slice(&files.receipt_file("installed.json")?)?;
-    let current = RunningIdentity {
-        bus_id: bus_id.clone(),
-        unique_owner: unique_owner.clone(),
-        pid,
-        process_start_ticks,
-        package_version: package_version.clone(),
-        architecture: architecture.clone(),
-        installed_executable_sha256: installed_executable_sha256.clone(),
-        running_daemon_sha256: receipt.running_identity.running_daemon_sha256,
-    };
-    let (receipt_manifest_sha256, receipt) = verified_receipt(files, &current)?;
-    let identity = read_modem(connection, owner, modem)?;
-    ensure!(
-        dbus_identity(connection, owner)? == (bus_id.clone(), unique_owner.clone(), pid)
-            && files.start_ticks(pid)? == process_start_ticks
-            && files.package()? == (package_version.clone(), architecture.clone())
-            && files.executable_hash()? == installed_executable_sha256
-            && read_modem(connection, owner, modem)? == identity,
-        "Provider identity changed during read"
-    );
-    Ok(ProviderIdentity {
-        package_version,
-        architecture,
-        running_daemon_sha256: current.running_daemon_sha256,
-        modem: identity.0,
-        primary_port: identity.1,
-        ports: identity.2,
-        bus_id,
-        unique_owner,
-        pid,
-        process_start_ticks,
-        installed_executable_sha256,
-        receipt_manifest_sha256,
-        receipt,
-    })
 }
